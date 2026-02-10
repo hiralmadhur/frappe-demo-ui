@@ -21,11 +21,12 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: [
-      'frappe-ui > feather-icons',
-      'showdown',
-      'engine.io-client',
-      'interactjs', // <--- Ye wo white screen/console error fix karega
-    ],
-  },
+		include: [
+			"frappe-ui > feather-icons",
+			"showdown",
+			"engine.io-client",
+			"interactjs",
+			"highlight.js/lib/core",
+		],
+	},
 });

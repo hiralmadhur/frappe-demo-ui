@@ -84,5 +84,22 @@ const crmSidebar = reactive({
 </script>
 
 <template>
-  <Sidebar :header="crmSidebar.header" :sections="crmSidebar.sections" />
+  <div class="w-full min-w-[260px] h-full">
+    <Sidebar 
+      :header="crmSidebar.header" 
+      :sections="crmSidebar.sections" 
+      class="h-full border-none w-full"
+    />
+  </div>
 </template>
+
+<style scoped>
+/* Frappe UI internal padding fix */
+:deep(.fe-sidebar) {
+  width: 100% !important;
+}
+:deep(.fe-sidebar-item-label) {
+  display: block !important; /* Ensure names are visible */
+  opacity: 1 !important;
+}
+</style>

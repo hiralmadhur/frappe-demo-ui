@@ -8,8 +8,6 @@ app_license = "mit"
 
 # apps/my_frappe_app/my_frappe_app/hooks.py
 
-# apps/my_frappe_app/my_frappe_app/hooks.py
-
 app_include_js = "/assets/my_frappe_app/dashboard/index.js"
 app_include_css = "/assets/my_frappe_app/dashboard/index.css"
 

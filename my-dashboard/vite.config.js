@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import frappeui from 'frappe-ui/vite';
 import Icons from 'unplugin-icons/vite';
-
+import * as debug from 'debug';
 export default defineConfig({
   plugins: [
     vue(),
@@ -22,6 +22,7 @@ export default defineConfig({
   },
   optimizeDeps: {
 		include: [
+      'debug',
 			"frappe-ui > feather-icons",
 			"showdown",
 			"engine.io-client",

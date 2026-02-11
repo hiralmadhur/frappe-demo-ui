@@ -8,7 +8,7 @@ requires-python = ">=3.14"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
-    frappe= ">=16.0.0-dev,<=17.0.0-dev"
+    # "frappe~=16.0.0" # Installed and managed by bench.
 ]
 
 [build-system]
@@ -17,6 +17,7 @@ build-backend = "flit_core.buildapi"
 
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]
+frappe=">16.0.0-dev,<=17.0.0-dev"
 # package_name = "~=1.1.0"
 
 [tool.ruff]

@@ -32,7 +32,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: path.resolve(__dirname, '../my_frappe_app/public/dashboard'),
+    outDir: path.resolve(__dirname, '../my_frappe_app/public/frontend'),
     emptyOutDir: true,
     target: 'es2015',
     rollupOptions: {

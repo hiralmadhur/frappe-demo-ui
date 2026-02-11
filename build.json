@@ -1,10 +1,10 @@
 {
     "apps": [
         {
-            "app": "my-dashboard",
+            "app": "frontend",
             "path": "my-dashboard",
             "build_command": "npm install && npm run build",
-            "output_dir": "../my_frappe_app/public/dashboard"
+            "output_dir": "../my_frappe_app/public/frontend"
         }
     ]
 }

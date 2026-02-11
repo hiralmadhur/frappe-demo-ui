@@ -3,7 +3,7 @@
         {
             "app": "my-dashboard",
             "path": "my-dashboard",
-            "build_command": "yarn && yarn build",
+            "build_command": "npm install && npm run build",
             "output_dir": "../my_frappe_app/public/dashboard"
         }
     ]

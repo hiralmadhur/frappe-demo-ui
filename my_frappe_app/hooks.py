@@ -8,13 +8,14 @@ app_license = "mit"
 
 # apps/my_frappe_app/my_frappe_app/hooks.py
 
-# apps/my_frappe_app/my_frappe_app/hooks.py mein sirf ye rakhein
+# apps/my_frappe_app/my_frappe_app/hooks.py
+
 app_include_js = "/assets/my_frappe_app/dashboard/index.js"
 app_include_css = "/assets/my_frappe_app/dashboard/index.css"
 
 # Website route rules
 website_route_rules = [
-	{"from_route": "/frontend/<path:app_path>", "to_route": "frontend"},
+	{"from_route": "/dashboard/<path:app_path>", "to_route": "dashboard"},
 ]
 # ------------------
 

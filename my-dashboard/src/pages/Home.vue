@@ -8,7 +8,7 @@ const isMenuOpen = ref(false)
 </script>
 
 <template>
-  <div class="flex h-screen w-full bg-white overflow-hidden">
+  <div class="flex h-screen w-full bg-white">
     <div v-if="isMenuOpen" @click="isMenuOpen = false" class="fixed inset-0 bg-black/40 z-40 lg:hidden"></div>
 
     <aside :class="[

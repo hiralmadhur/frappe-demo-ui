@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
-import { Sidebar } from 'frappe-ui'
+import { Sidebar,Dropdown } from 'frappe-ui'
 
 import Notifications from '~icons/lucide/bell'
 import Deals from '~icons/lucide/briefcase'

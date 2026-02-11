@@ -8,7 +8,7 @@ const isMenuOpen = ref(false)
 </script>
 
 <template>
-  <div class="flex h-screen w-full bg-white ">
+  <div class="flex h-screen w-full bg-gray-50 overflow-hidden">
     
     <div v-if="isMenuOpen" 
          @click="isMenuOpen = false"
@@ -30,7 +30,7 @@ const isMenuOpen = ref(false)
       </div>
     </aside>
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
       <header class="h-14 flex items-center px-4 border-b bg-white lg:hidden flex-shrink-0">
         <button @click="isMenuOpen = true" class="p-2 -ml-2 hover:bg-gray-100 rounded-md">
           <Menu class="w-6 h-6 text-gray-600" />
@@ -38,8 +38,10 @@ const isMenuOpen = ref(false)
         <span class="ml-3 font-bold text-gray-800">Frappe CRM</span>
       </header>
 
-      <main class="flex-1 overflow-auto p-0">
-        <UserList />
+      <main class="flex-1 overflow-y-auto overflow-x-hidden">
+        <div class="h-full w-full max-w-full">
+          <UserList />
+        </div>
       </main>
     </div>
   </div>

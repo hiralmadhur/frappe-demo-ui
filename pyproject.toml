@@ -4,7 +4,7 @@ authors = [
     { name = "uvtechglobal@gmail.com", email = "uvtechglobal@gmail.com"}
 ]
 description = "my_frappe_app"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
@@ -15,14 +15,18 @@ dependencies = [
 requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
+# --- THE FIX STARTS HERE ---
+[tool.bench.frappe-dependencies]
+frappe = ">=16.0.0"
+# --- THE FIX ENDS HERE ---
+
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]
-frappe=">16.0.0-dev,<=17.0.0-dev"
-# package_name = "~=1.1.0"
+frappe = ">=16.0.0-dev,<=17.0.0-dev"
 
 [tool.ruff]
 line-length = 110
-target-version = "py314"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [

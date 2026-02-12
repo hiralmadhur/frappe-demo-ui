@@ -15,16 +15,16 @@ export default defineConfig({
       autoInstall: true
     }),
   ],
-  // 👇 Ye server block add karein
   server: {
     port: 5173,
     proxy: {
-      '^/(app|api|login|logout|assets|files)': {
-        target: 'http://127.0.0.1:8000', // Aapka Frappe port (default 8000)
+      '^/(app|login|api|assets|files|private|website_script.js|index.index|web_resource)': {
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        secure: false,
+        ws: true,
+        secure: false
       },
-    },
+    }
   },
   resolve: {
     alias: {

@@ -1,47 +1,39 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Menu, X } from 'lucide-vue-next'
-import CrmSidebar from '@/components/CrmSidebar.vue'
-import UserList from '@/components/UserList.vue'
+import Sidebar from '@/components/Sidebar.vue'
+import Navbar from '@/components/Navbar.vue'
+import Home from '@/pages/Home.vue'
+import { X } from 'lucide-vue-next'
+import { Button } from 'frappe-ui'
 
-const isMenuOpen = ref(false)
+const isSidebarOpen = ref(false)
+const currentFilters = ref({ customer: '' })
+
+const updateFilters = (f: any) => {
+  currentFilters.value = f
+  if (window.innerWidth < 1024) isSidebarOpen.value = false
+}
 </script>
 
 <template>
-  <div class="flex h-screen w-full bg-gray-50 overflow-hidden">
-    
-    <div v-if="isMenuOpen" 
-         @click="isMenuOpen = false"
-         class="fixed inset-0 bg-black/40 z-40 lg:hidden">
-    </div>
+  <div class="flex h-screen w-screen bg-gray-50 overflow-hidden">
+    <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="fixed inset-0 bg-black/30 z-40 lg:hidden"></div>
 
     <aside :class="[
-      'fixed inset-y-0 left-0 z-50 w-[260px] bg-white border-r transition-transform duration-300 ease-in-out',
-      isMenuOpen ? 'translate-x-0' : '-translate-x-full',
-      'lg:relative lg:translate-x-0 lg:flex-shrink-0'
+      'fixed inset-y-0 left-0 z-50 w-72 bg-white border-r transition-transform duration-300 lg:static lg:translate-x-0',
+      isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
     ]">
-      <div class="h-full flex flex-col">
-        <div class="p-4 flex justify-end lg:hidden border-b">
-          <button @click="isMenuOpen = false" class="p-1 hover:bg-gray-100 rounded">
-            <X class="w-6 h-6 text-gray-600" />
-          </button>
-        </div>
-        <CrmSidebar class="flex-1" />
+      <div class="flex items-center justify-between p-4 lg:hidden border-b bg-gray-50">
+        <span class="font-bold">Filters</span>
+        <Button variant="ghost" @click="isSidebarOpen = false"><X class="w-5 h-5"/></Button>
       </div>
+      <Sidebar @update:filters="updateFilters" />
     </aside>
 
-    <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-      <header class="h-14 flex items-center px-4 border-b bg-white lg:hidden flex-shrink-0">
-        <button @click="isMenuOpen = true" class="p-2 -ml-2 hover:bg-gray-100 rounded-md">
-          <Menu class="w-6 h-6 text-gray-600" />
-        </button>
-        <span class="ml-3 font-bold text-gray-800">Frappe CRM</span>
-      </header>
-
-      <main class="flex-1 overflow-y-auto overflow-x-hidden">
-        <div class="h-full w-full max-w-full">
-          <UserList />
-        </div>
+    <div class="flex-1 flex flex-col min-w-0 h-full">
+      <Navbar @toggle-sidebar="isSidebarOpen = !isSidebarOpen" />
+      <main class="flex-1 overflow-y-auto p-4 md:p-8">
+        <Home :filters="currentFilters" />
       </main>
     </div>
   </div>

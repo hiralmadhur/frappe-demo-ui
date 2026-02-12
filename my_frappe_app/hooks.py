@@ -16,8 +16,12 @@ website_route_rules = [
 	{"from_route": "/frontend/<path:app_path>", "to_route": "frontend"},
 ]
 # ------------------
-
+# Redirect Seller to Frontend upon login
+on_session_creation = "my_frappe_app.utils.login_redirect"
 # required_apps = []
+role_home_page = {
+    "Seller": "/frontend"
+}
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [

@@ -2,12 +2,15 @@ import { createApp } from 'vue'
 import router from './router'
 import App from './App.vue'
 import './index.css'
-import { FrappeUI,setConfig, frappeRequest, resourcesPlugin } from 'frappe-ui'
+import { FrappeUI, setConfig, frappeRequest } from 'frappe-ui'
 
-let app = createApp(App)
+const app = createApp(App)
 
 setConfig('resourceFetcher', frappeRequest)
+
+// FrappeUI already includes resourcesPlugin internally
+// DO NOT add app.use(resourcesPlugin) separately — causes "Plugin already applied" warning
 app.use(router)
-app.use(resourcesPlugin)
 app.use(FrappeUI)
+
 app.mount('#app')

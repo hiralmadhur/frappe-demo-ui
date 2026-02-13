@@ -12,7 +12,8 @@
     "esModuleInterop": true,
     "lib": [
       "ESNext",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ],
     "skipLibCheck": true,
     "noEmit": true,
@@ -25,16 +26,24 @@
     "types": [
       "unplugin-icons/types/vue",
       "vite/client"
-    ]
+    ],
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true
   },
   "include": [
     "src/**/*.ts",
     "src/**/*.d.ts",
     "src/**/*.tsx",
-    "src/**/*.vue"
+    "src/App.vue",
+    "src/components/Seller/**/*.vue",
+    "src/components/Customer/**/*.vue",
+    "src/pages/Seller/**/*.vue",
+    "src/pages/Customer/**/*.vue"
   ],
   "exclude": [
     "node_modules",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "dist",
+    "build"
   ]
 }

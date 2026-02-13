@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Dropdown, Avatar, Button } from 'frappe-ui'
-import { LogOut, Menu } from 'lucide-vue-next'
+import { LogOut, Menu, ShoppingCart } from 'lucide-vue-next'
 
 const emit = defineEmits(['toggle-sidebar'])
 
@@ -27,7 +27,10 @@ const options = [{ label: 'Logout', icon: LogOut, onClick: handleLogout }]
       <Button variant="ghost" class="lg:hidden" @click="emit('toggle-sidebar')">
         <Menu class="w-5 h-5" />
       </Button>
-      <h1 class="font-bold text-gray-800 text-lg">Seller Portal</h1>
+      <div class="flex items-center gap-2">
+        <ShoppingCart class="w-5 h-5 text-blue-600" />
+        <h1 class="font-bold text-gray-800 text-lg">Customer Portal</h1>
+      </div>
     </div>
 
     <Dropdown :options="options">

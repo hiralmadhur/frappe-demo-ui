@@ -11,7 +11,7 @@ import { Button } from 'frappe-ui'
 const router = useRouter()
 const isSidebarOpen = ref(false)
 const currentFilters = ref<any>({})
-const userRole = ref<'Seller' | 'Customer'>('Seller')
+const userRole = ref<'Seller' | 'Customer' | 'Administrator'>('Seller')
 const isLoading = ref(true)
 
 const toast = ref({ show: false, message: '', type: 'success' })
@@ -20,6 +20,7 @@ const showToast = (message: string, type: 'success' | 'error' = 'success') => {
   setTimeout(() => { toast.value.show = false }, 4000)
 }
 provide('showToast', showToast)
+provide('userRole', userRole)
 
 const applyRole = (role: string) => {
   if (!role || role === 'Guest') {
@@ -27,7 +28,17 @@ const applyRole = (role: string) => {
     return
   }
   userRole.value = role as any
-  router.replace(role === 'Customer' ? '/customer' : '/seller')
+
+  if (role === 'Administrator') {
+    // If Admin is already on a portal route, stay there. Otherwise go to /seller.
+    const currentPath = window.location.pathname
+    if (!currentPath.includes('/frontend/seller') && !currentPath.includes('/frontend/customer')) {
+      router.replace('/seller')
+    }
+  } else {
+    router.replace(role === 'Customer' ? '/customer' : '/seller')
+  }
+
   isLoading.value = false
 }
 
@@ -44,8 +55,15 @@ const updateFilters = (f: any) => {
   if (window.innerWidth < 1024) isSidebarOpen.value = false
 }
 
-const CurrentSidebar = computed(() => userRole.value === 'Customer' ? CustomerSidebarmenu : SellerSidebarmenu)
-const CurrentNavbar = computed(() => userRole.value === 'Customer' ? CustomerNavbar : SellerNavbar)
+const isCustomerRoute = computed(() => {
+  if (userRole.value === 'Administrator') {
+    return router.currentRoute.value.path.startsWith('/customer')
+  }
+  return userRole.value === 'Customer'
+})
+
+const CurrentSidebar = computed(() => isCustomerRoute.value ? CustomerSidebarmenu : SellerSidebarmenu)
+const CurrentNavbar = computed(() => isCustomerRoute.value ? CustomerNavbar : SellerNavbar)
 </script>
 
 <template>

@@ -11,6 +11,9 @@ from frappe.utils import nowdate, getdate, fmt_money, format_date
 def get_current_user_role():
     """Get current user's role"""
     user = frappe.session.user
+    if user == "Administrator":
+        return {"role": "Administrator"}
+        
     roles = frappe.get_roles(user)
     if "Customer" in roles:
         return {"role": "Customer"}
@@ -29,6 +32,7 @@ def get_seller_context():
     )
     
     if not seller: 
+        frappe.log_error("No company found with custom_seller=1", "Seller Context Error")
         return {"pincodes": [], "company": None}
 
     pincodes = frappe.db.sql_list("""
@@ -39,6 +43,9 @@ def get_seller_context():
         AND a.pincode IS NOT NULL 
         AND a.pincode != ''
     """, (seller.name,))
+
+    if not pincodes:
+        frappe.log_error(f"No addresses linked to company {seller.name} or pincodes missing", "Seller Context Error")
 
     return {
         "company": seller,
@@ -106,6 +113,9 @@ def get_customer_sidebar_data():
             as_dict=True
         )
 
+        if not customer and user_email != "Administrator":
+            frappe.log_error(f"No Customer found for email: {user_email}", "Customer Sidebar Error")
+
         final_pincode_list = []
         
         if customer:
@@ -118,6 +128,9 @@ def get_customer_sidebar_data():
                 AND dl.link_name = %s
             """, (customer.name,), as_dict=True)
             
+            if not addresses:
+                frappe.log_error(f"No addresses linked to customer {customer.name}", "Customer Sidebar Error")
+
             # Primary addresses first
             primary = [a.pincode for a in addresses if a.is_primary_address and a.pincode]
             others = [a.pincode for a in addresses if not a.is_primary_address and a.pincode]
@@ -127,6 +140,7 @@ def get_customer_sidebar_data():
         # Fallback for Administrator
         if not final_pincode_list and user_email == "Administrator":
             final_pincode_list = ["388001"]
+            frappe.logger().debug("Using fallback pincode 388001 for Administrator")
 
         # Get active categories
         categories = frappe.db.sql("""

@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, inject, computed } from 'vue'
 import { Dropdown, Avatar, Button } from 'frappe-ui'
-import { LogOut, Menu, ShoppingCart } from 'lucide-vue-next'
+import { LogOut, Menu, ShoppingCart, Layout, Store } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
 
 const emit = defineEmits(['toggle-sidebar'])
 
 const session = ref({
   user_fullname: (window as any).frappe?.session?.user_fullname || 'User'
 })
+
+const userRole = inject<any>('userRole')
+const router = useRouter()
 
 const handleLogout = async () => {
   try {
@@ -18,7 +22,21 @@ const handleLogout = async () => {
   }
 }
 
-const options = [{ label: 'Logout', icon: LogOut, onClick: handleLogout }]
+const options = computed(() => [
+  ...(userRole?.value === 'Administrator' ? [
+    {
+      label: 'Switch to Seller Portal',
+      icon: Store,
+      onClick: () => { router.push('/seller') }
+    },
+    {
+      label: 'Go to Desk',
+      icon: Layout,
+      onClick: () => { window.location.href = '/app' }
+    }
+  ] : []),
+  { label: 'Logout', icon: LogOut, onClick: handleLogout }
+])
 </script>
 
 <template>

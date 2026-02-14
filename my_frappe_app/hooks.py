@@ -24,3 +24,18 @@ role_home_page = {
     "Seller": "/frontend/seller",
     "Customer": "/frontend/customer",
 }
+
+fixtures = [
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "=", "Company"]
+        ]
+    },
+    {
+        "doctype": "Property Setter",
+        "filters": [
+            ["doc_type", "=", "Company"]
+        ]
+    }
+]

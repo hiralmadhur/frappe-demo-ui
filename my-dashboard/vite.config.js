@@ -4,7 +4,8 @@ import vue from '@vitejs/plugin-vue';
 import frappeui from 'frappe-ui/vite';
 import Icons from 'unplugin-icons/vite';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/assets/my_frappe_app/frontend/' : '/',
   plugins: [
     vue(),
     frappeui({
@@ -53,4 +54,4 @@ export default defineConfig({
       "highlight.js/lib/core",
     ],
   },
-});
+}));

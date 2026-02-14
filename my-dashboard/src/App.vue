@@ -22,6 +22,10 @@ const showToast = (message: string, type: 'success' | 'error' = 'success') => {
 provide('showToast', showToast)
 
 const applyRole = (role: string) => {
+  if (!role || role === 'Guest') {
+    window.location.href = '/login'
+    return
+  }
   userRole.value = role as any
   router.replace(role === 'Customer' ? '/customer' : '/seller')
   isLoading.value = false
@@ -31,8 +35,8 @@ onMounted(async () => {
   try {
     const res = await fetch('/api/method/my_frappe_app.api.get_current_user_role')
     const data = await res.json()
-    applyRole(data?.message?.role || 'Seller')
-  } catch (e) { applyRole('Seller') }
+    applyRole(data?.message?.role || 'Guest')
+  } catch (e) { applyRole('Guest') }
 })
 
 const updateFilters = (f: any) => {
@@ -47,11 +51,14 @@ const CurrentNavbar = computed(() => userRole.value === 'Customer' ? CustomerNav
 <template>
   <div class="flex h-screen w-screen bg-gray-50 overflow-hidden font-sans relative">
     <Transition name="slide-fade">
-      <div v-if="toast.show" :class="['fixed top-5 right-5 z-[100] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border text-white transition-all', toast.type === 'success' ? 'bg-gray-900 border-gray-800' : 'bg-red-600 border-red-500']">
+      <div v-if="toast.show"
+        :class="['fixed top-5 right-5 z-[100] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border text-white transition-all', toast.type === 'success' ? 'bg-gray-900 border-gray-800' : 'bg-red-600 border-red-500']">
         <CheckCircle v-if="toast.type === 'success'" class="w-5 h-5 text-green-400" />
         <AlertCircle v-else class="w-5 h-5 text-red-200" />
         <span class="font-bold text-sm">{{ toast.message }}</span>
-        <button @click="toast.show = false" class="ml-2 hover:opacity-70"><X class="w-4 h-4" /></button>
+        <button @click="toast.show = false" class="ml-2 hover:opacity-70">
+          <X class="w-4 h-4" />
+        </button>
       </div>
     </Transition>
 
@@ -63,10 +70,13 @@ const CurrentNavbar = computed(() => userRole.value === 'Customer' ? CustomerNav
     </div>
 
     <template v-else>
-      <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="fixed inset-0 bg-black/40 z-[60] lg:hidden backdrop-blur-sm transition-opacity"></div>
-      
-      <aside :class="['fixed inset-y-0 left-0 z-[70] w-72 bg-white border-r transition-transform duration-300 lg:static lg:translate-x-0', isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0']">
-        <component :is="CurrentSidebar" :isOpen="isSidebarOpen" @update:filters="updateFilters" @close="isSidebarOpen = false" />
+      <div v-if="isSidebarOpen" @click="isSidebarOpen = false"
+        class="fixed inset-0 bg-black/40 z-[60] lg:hidden backdrop-blur-sm transition-opacity"></div>
+
+      <aside
+        :class="['fixed inset-y-0 left-0 z-[70] w-72 bg-white border-r transition-transform duration-300 lg:static lg:translate-x-0', isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0']">
+        <component :is="CurrentSidebar" :isOpen="isSidebarOpen" @update:filters="updateFilters"
+          @close="isSidebarOpen = false" />
       </aside>
 
       <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
@@ -80,8 +90,23 @@ const CurrentNavbar = computed(() => userRole.value === 'Customer' ? CustomerNav
 </template>
 
 <style scoped>
-.custom-scrollbar::-webkit-scrollbar { width: 4px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 10px; }
-.slide-fade-enter-active, .slide-fade-leave-active { transition: all 0.3s ease; }
-.slide-fade-enter-from, .slide-fade-leave-to { transform: translateX(20px); opacity: 0; }
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #E5E7EB;
+  border-radius: 10px;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateX(20px);
+  opacity: 0;
+}
 </style>

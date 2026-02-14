@@ -7,7 +7,7 @@ from frappe.utils import nowdate, getdate, fmt_money, format_date
 # ROLE & CONTEXT METHODS
 # ============================================
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_current_user_role():
     """Get current user's role"""
     user = frappe.session.user

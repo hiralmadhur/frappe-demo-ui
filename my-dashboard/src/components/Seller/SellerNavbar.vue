@@ -4,9 +4,13 @@ import { LogOut, Menu, Bell } from 'lucide-vue-next'
 
 const emit = defineEmits(['toggle-sidebar'])
 
-const handleLogout = () => {
-  // Use standard location redirect to avoid TS errors on custom window properties
-  window.location.assign('/login')
+const handleLogout = async () => {
+  try {
+    await fetch('/api/method/logout', { method: 'POST' })
+    window.location.href = '/login'
+  } catch (e) {
+    window.location.href = '/login'
+  }
 }
 </script>
 

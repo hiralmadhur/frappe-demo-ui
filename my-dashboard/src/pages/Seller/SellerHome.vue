@@ -34,7 +34,7 @@ const orders = createListResource({
   fields: ['name', 'customer_name', 'status', 'grand_total', 'currency', 'docstatus', 'per_delivered', 'per_billed', 'transaction_date'],
   orderBy: 'creation desc',
   pageLength: 100,
-  auto: false,
+  auto: true,
 })
 
 const orderDetails = createResource({
@@ -44,9 +44,9 @@ const orderDetails = createResource({
   },
 })
 
-const workflow = createResource({ 
-    url: 'my_frappe_app.api.process_order_workflow',
-    auto: false 
+const workflow = createResource({
+  url: 'my_frappe_app.api.process_order_workflow',
+  auto: false
 })
 
 // --- STATE ---
@@ -106,9 +106,9 @@ const getStatusTheme = (status: string): BadgeTheme => {
 }
 
 const formatCurrency = (amount: number, currency: string) => {
-  return new Intl.NumberFormat('en-IN', { 
-    style: 'currency', 
-    currency: currency || 'INR' 
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: currency || 'INR'
   }).format(amount)
 }
 </script>
@@ -116,32 +116,38 @@ const formatCurrency = (amount: number, currency: string) => {
 <template>
   <div class="space-y-6 max-w-7xl mx-auto pb-10 font-sans text-gray-900">
     <div v-if="filters.customer" class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="bg-white p-5 rounded-3xl border border-orange-100 shadow-sm flex items-center justify-between group hover:border-orange-300 transition-all">
+      <div
+        class="bg-white p-5 rounded-3xl border border-orange-100 shadow-sm flex items-center justify-between group hover:border-orange-300 transition-all">
         <div>
           <p class="text-xs font-bold text-orange-400 uppercase tracking-widest mb-1">To Accept</p>
           <p class="text-3xl font-black text-gray-900">{{ stats.pending }}</p>
         </div>
-        <div class="h-12 w-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+        <div
+          class="h-12 w-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors">
           <Clock class="w-6 h-6" />
         </div>
       </div>
 
-      <div class="bg-white p-5 rounded-3xl border border-blue-100 shadow-sm flex items-center justify-between group hover:border-blue-300 transition-all">
+      <div
+        class="bg-white p-5 rounded-3xl border border-blue-100 shadow-sm flex items-center justify-between group hover:border-blue-300 transition-all">
         <div>
           <p class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-1">To Deliver</p>
           <p class="text-3xl font-black text-gray-900">{{ stats.toDeliver }}</p>
         </div>
-        <div class="h-12 w-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+        <div
+          class="h-12 w-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
           <Truck class="w-6 h-6" />
         </div>
       </div>
 
-      <div class="bg-white p-5 rounded-3xl border border-green-100 shadow-sm flex items-center justify-between group hover:border-green-300 transition-all">
+      <div
+        class="bg-white p-5 rounded-3xl border border-green-100 shadow-sm flex items-center justify-between group hover:border-green-300 transition-all">
         <div>
           <p class="text-xs font-bold text-green-500 uppercase tracking-widest mb-1">Completed</p>
           <p class="text-3xl font-black text-gray-900">{{ stats.completed }}</p>
         </div>
-        <div class="h-12 w-12 rounded-2xl bg-green-50 flex items-center justify-center text-green-600 group-hover:bg-green-600 group-hover:text-white transition-colors">
+        <div
+          class="h-12 w-12 rounded-2xl bg-green-50 flex items-center justify-center text-green-600 group-hover:bg-green-600 group-hover:text-white transition-colors">
           <CheckCircle class="w-6 h-6" />
         </div>
       </div>
@@ -158,13 +164,18 @@ const formatCurrency = (amount: number, currency: string) => {
         </div>
       </div>
       <Button variant="outline" @click="orders.reload()" :loading="orders.loading">
-        <template #prefix><RefreshCcw class="w-4 h-4" /></template> Refresh
+        <template #prefix>
+          <RefreshCcw class="w-4 h-4" />
+        </template> Refresh
       </Button>
     </div>
 
-    <div class="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-100/50 overflow-hidden min-h-[500px]">
+    <div
+      class="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-100/50 overflow-hidden min-h-[500px]">
       <div v-if="!filters.customer" class="flex flex-col items-center justify-center py-40">
-        <div class="bg-blue-50 p-6 rounded-full mb-4"><User class="w-12 h-12 text-blue-500" /></div>
+        <div class="bg-blue-50 p-6 rounded-full mb-4">
+          <User class="w-12 h-12 text-blue-500" />
+        </div>
         <h3 class="text-lg font-bold">No Customer Selected</h3>
         <p class="text-gray-400">Please select a customer from the sidebar.</p>
       </div>
@@ -189,7 +200,8 @@ const formatCurrency = (amount: number, currency: string) => {
               class="hover:bg-blue-50/40 cursor-pointer group transition-all duration-200">
               <td class="px-8 py-5">
                 <div class="flex items-center gap-3">
-                  <div class="p-2 bg-gray-100 rounded-lg text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                  <div
+                    class="p-2 bg-gray-100 rounded-lg text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
                     <ShoppingBag class="w-5 h-5" />
                   </div>
                   <div>
@@ -213,12 +225,16 @@ const formatCurrency = (amount: number, currency: string) => {
 
                   <Button v-if="row.docstatus === 1 && row.per_delivered < 100" variant="subtle" theme="gray"
                     :loading="processingId === row.name" @click="runAction(row.name, 'deliver')">
-                    <template #prefix><Truck class="w-4 h-4" /></template> Deliver
+                    <template #prefix>
+                      <Truck class="w-4 h-4" />
+                    </template> Deliver
                   </Button>
 
                   <Button v-if="row.per_delivered >= 100 && row.per_billed < 100" variant="subtle" theme="gray"
                     :loading="processingId === row.name" @click="runAction(row.name, 'invoice')">
-                    <template #prefix><FileText class="w-4 h-4" /></template> Invoice
+                    <template #prefix>
+                      <FileText class="w-4 h-4" />
+                    </template> Invoice
                   </Button>
                   <ChevronRight class="w-5 h-5 text-gray-300 ml-2" />
                 </div>
@@ -233,52 +249,83 @@ const formatCurrency = (amount: number, currency: string) => {
       <template #body-title>
         <div class="flex items-center justify-between w-full pr-8">
           <div class="flex items-center gap-3">
-            <div class="h-10 w-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600"><Package class="w-5 h-5" /></div>
+            <div class="h-10 w-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
+              <Package class="w-5 h-5" />
+            </div>
             <div>
               <h3 class="text-xl font-black leading-none">Order Details</h3>
               <p class="text-sm text-gray-500 font-mono mt-1">{{ orderDetails.data?.name }}</p>
             </div>
           </div>
-          <Badge v-if="orderDetails.data" :theme="getStatusTheme(orderDetails.data.status)" size="lg" :label="orderDetails.data.status" />
+          <Badge v-if="orderDetails.data" :theme="getStatusTheme(orderDetails.data.status)" size="lg"
+            :label="orderDetails.data.status" />
         </div>
       </template>
 
       <template #body-content>
-        <div v-if="orderDetails.loading" class="flex flex-col items-center justify-center h-80"><LoadingIndicator class="w-10 h-10 text-blue-500" /></div>
+        <div v-if="orderDetails.loading" class="flex flex-col items-center justify-center h-80">
+          <LoadingIndicator class="w-10 h-10 text-blue-500" />
+        </div>
         <div v-else-if="orderDetails.data" class="py-6 space-y-8">
-           <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex items-start gap-3">
-                <div class="bg-white p-2 rounded-lg text-gray-500 shadow-sm"><User class="w-4 h-4" /></div>
-                <div><p class="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">Customer</p><p class="font-bold leading-tight">{{ orderDetails.data.customer_name }}</p></div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex items-start gap-3">
+              <div class="bg-white p-2 rounded-lg text-gray-500 shadow-sm">
+                <User class="w-4 h-4" />
               </div>
-              <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex items-start gap-3">
-                <div class="bg-white p-2 rounded-lg text-gray-500 shadow-sm"><Calendar class="w-4 h-4" /></div>
-                <div><p class="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">Date</p><p class="font-bold">{{ orderDetails.data.transaction_date }}</p></div>
+              <div>
+                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">Customer</p>
+                <p class="font-bold leading-tight">{{ orderDetails.data.customer_name }}</p>
               </div>
-              <div class="bg-blue-600 p-5 rounded-2xl text-white flex items-center justify-between">
-                <div><p class="text-[11px] font-bold text-blue-200 uppercase tracking-widest mb-1">Grand Total</p><p class="font-black text-2xl">{{ formatCurrency(orderDetails.data.grand_total, orderDetails.data.currency) }}</p></div>
+            </div>
+            <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex items-start gap-3">
+              <div class="bg-white p-2 rounded-lg text-gray-500 shadow-sm">
+                <Calendar class="w-4 h-4" />
               </div>
-           </div>
-           <div class="border border-gray-200 rounded-xl overflow-hidden">
-             <table class="w-full text-sm">
-               <thead class="bg-gray-50 text-[10px] uppercase font-bold text-gray-500">
-                 <tr><th class="px-5 py-4 text-left">Item</th><th class="px-5 py-4 text-right">Qty</th><th class="px-5 py-4 text-right">Rate</th><th class="px-5 py-4 text-right">Amount</th></tr>
-               </thead>
-               <tbody class="divide-y divide-gray-100">
-                 <tr v-for="item in orderDetails.data.items" :key="item.name">
-                    <td class="px-5 py-4 font-bold text-gray-900">{{ item.item_name }}</td>
-                    <td class="px-5 py-4 text-right">{{ item.qty }}</td>
-                    <td class="px-5 py-4 text-right">{{ formatCurrency(item.rate, orderDetails.data.currency) }}</td>
-                    <td class="px-5 py-4 text-right font-bold">{{ formatCurrency(item.amount, orderDetails.data.currency) }}</td>
-                 </tr>
-               </tbody>
-             </table>
-           </div>
-           <div class="flex justify-end gap-3 pt-6 border-t border-gray-100">
-              <Button v-if="orderDetails.data.docstatus === 0" variant="solid" theme="blue" size="xl" :loading="processingId === orderDetails.data.name" @click="runAction(orderDetails.data.name, 'accept')">Accept Order</Button>
-              <Button v-if="orderDetails.data.docstatus === 1 && orderDetails.data.per_delivered < 100" variant="solid" theme="gray" size="xl" class="bg-gray-900 text-white" :loading="processingId === orderDetails.data.name" @click="runAction(orderDetails.data.name, 'deliver')">Generate Delivery Note</Button>
-              <Button v-if="orderDetails.data.per_delivered >= 100 && orderDetails.data.per_billed < 100" variant="solid" theme="gray" size="xl" class="bg-gray-900 text-white" :loading="processingId === orderDetails.data.name" @click="runAction(orderDetails.data.name, 'invoice')">Generate Invoice</Button>
-           </div>
+              <div>
+                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">Date</p>
+                <p class="font-bold">{{ orderDetails.data.transaction_date }}</p>
+              </div>
+            </div>
+            <div class="bg-blue-600 p-5 rounded-2xl text-white flex items-center justify-between">
+              <div>
+                <p class="text-[11px] font-bold text-blue-200 uppercase tracking-widest mb-1">Grand Total</p>
+                <p class="font-black text-2xl">{{ formatCurrency(orderDetails.data.grand_total,
+                  orderDetails.data.currency) }}</p>
+              </div>
+            </div>
+          </div>
+          <div class="border border-gray-200 rounded-xl overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-[10px] uppercase font-bold text-gray-500">
+                <tr>
+                  <th class="px-5 py-4 text-left">Item</th>
+                  <th class="px-5 py-4 text-right">Qty</th>
+                  <th class="px-5 py-4 text-right">Rate</th>
+                  <th class="px-5 py-4 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <tr v-for="item in orderDetails.data.items" :key="item.name">
+                  <td class="px-5 py-4 font-bold text-gray-900">{{ item.item_name }}</td>
+                  <td class="px-5 py-4 text-right">{{ item.qty }}</td>
+                  <td class="px-5 py-4 text-right">{{ formatCurrency(item.rate, orderDetails.data.currency) }}</td>
+                  <td class="px-5 py-4 text-right font-bold">{{ formatCurrency(item.amount, orderDetails.data.currency)
+                  }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="flex justify-end gap-3 pt-6 border-t border-gray-100">
+            <Button v-if="orderDetails.data.docstatus === 0" variant="solid" theme="blue" size="xl"
+              :loading="processingId === orderDetails.data.name"
+              @click="runAction(orderDetails.data.name, 'accept')">Accept Order</Button>
+            <Button v-if="orderDetails.data.docstatus === 1 && orderDetails.data.per_delivered < 100" variant="solid"
+              theme="gray" size="xl" class="bg-gray-900 text-white" :loading="processingId === orderDetails.data.name"
+              @click="runAction(orderDetails.data.name, 'deliver')">Generate Delivery Note</Button>
+            <Button v-if="orderDetails.data.per_delivered >= 100 && orderDetails.data.per_billed < 100" variant="solid"
+              theme="gray" size="xl" class="bg-gray-900 text-white" :loading="processingId === orderDetails.data.name"
+              @click="runAction(orderDetails.data.name, 'invoice')">Generate Invoice</Button>
+          </div>
         </div>
       </template>
     </Dialog>

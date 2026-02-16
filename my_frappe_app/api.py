@@ -597,9 +597,11 @@ def cancel_order(order_id):
 
 @frappe.whitelist()
 def get_seller_orders(seller=None, status_filter=None):
+    """Get seller's orders"""
     try:
         if not seller:
             seller = frappe.db.get_value("Company", {"custom_seller": 1}, "name")
+
         if not seller:
             return {"status": "error", "message": _("Seller company not found")}
 
@@ -612,14 +614,21 @@ def get_seller_orders(seller=None, status_filter=None):
         orders = frappe.get_all(
             "Sales Order",
             filters=filters,
-            fields=["name", "customer", "customer_name", "transaction_date",
-                    "grand_total", "docstatus", "status", "per_delivered", "per_billed"],
+            fields=[
+                "name", "customer", "customer_name", "transaction_date",
+                "grand_total", "docstatus", "status", "per_delivered", "per_billed"
+            ],
             order_by="creation desc"
         )
 
         for order in orders:
-            order.display_status  = "Pending" if order.docstatus == 0 else \
-                                    order.status if order.docstatus == 1 else "Cancelled"
+            if order.docstatus == 0:
+                order.display_status = "Pending"
+            elif order.docstatus == 1:
+                order.display_status = order.status
+            else:
+                order.display_status = "Cancelled"
+
             order.formatted_total = fmt_money(order.grand_total, currency="INR")
             order.formatted_date  = format_date(order.transaction_date)
 

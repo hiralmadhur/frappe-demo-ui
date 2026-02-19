@@ -1,143 +1,259 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { createResource, LoadingIndicator, Avatar, Button } from 'frappe-ui'
-import { 
-  MapPin, Building, Layers, Users, 
-  ChevronRight, ChevronDown, X 
+import { ref, computed } from 'vue'
+import {
+  createResource,
+  LoadingIndicator,
+  Button
+} from 'frappe-ui'
+import {
+  MapPin,
+  Building,
+  Layers,
+  Users,
+  FilterX,
+  ChevronRight,
+  ChevronDown,
+  X
 } from 'lucide-vue-next'
 
-interface ContextData {
-  company: { company_name: string };
-  pincodes: Array<{ label: string; value: string }>;
+interface Option { label: string; value: string }
+interface PincodeMapEntry {
+  societies: Option[]
+  customers: Option[]
+}
+interface SellerSidebarData {
+  status: string
+  seller: { name: string; company_name: string } | null
+  pincode_list: Option[]
+  pincode_map: Record<string, PincodeMapEntry>
+  all_categories: Option[]
 }
 
-interface OptionItem {
-  label: string;
-  value: string;
-}
-
-interface CategoryItem {
-  label: string;
-  value: string;
-}
-
-interface OptionsData {
-  societies: OptionItem[];
-  customers: OptionItem[];
-}
-
-const props = defineProps<{ isOpen: boolean }>()
+const props = defineProps<{ isOpen?: boolean }>()
 const emit = defineEmits(['update:filters', 'close'])
 
-const expandedPincode = ref<string>('')
-const expandedSociety = ref<string>('')
+const expandedPincode  = ref<string>('')
+const expandedSociety  = ref<string>('')
 const expandedCategory = ref<string>('')
 const selectedCustomer = ref<string>('')
 
-// --- Resources with Types ---
-const context = createResource<ContextData>({ 
-  url: 'my_frappe_app.api.get_seller_context', 
-  auto: true 
+const sidebarData = createResource({
+  url: 'my_frappe_app.api.get_seller_sidebar_data',
+  auto: true,
+  onSuccess(data: SellerSidebarData) {
+    if (data.pincode_list?.length > 0) {
+      expandedPincode.value = data.pincode_list[0].value
+    }
+  }
 })
 
-const options = createResource<OptionsData>({
-  url: 'my_frappe_app.api.get_filtered_options',
-  makeParams() { return { pincode: expandedPincode.value } }
-})
+const data            = computed(() => sidebarData.data as SellerSidebarData | null)
+const pincodeOptions  = computed(() => data.value?.pincode_list || [])
+const categoryOptions = computed(() => data.value?.all_categories || [])
 
-const categories = createResource<CategoryItem[]>({ 
-  url: 'my_frappe_app.api.get_item_categories', 
-  auto: true 
-})
+const societyOptions  = computed(() =>
+  data.value?.pincode_map?.[expandedPincode.value]?.societies || []
+)
+const customerOptions = computed(() =>
+  data.value?.pincode_map?.[expandedPincode.value]?.customers || []
+)
 
-const selectCustomer = (val: string) => {
-  selectedCustomer.value = val
-  emit('update:filters', { customer: val })
-  if (window.innerWidth < 1024) emit('close')
+const togglePincode = (val: string) => {
+  expandedPincode.value  = expandedPincode.value === val ? '' : val
+  expandedSociety.value  = ''
+  expandedCategory.value = ''
+  selectedCustomer.value = ''
+}
+const toggleSociety = (val: string) => {
+  expandedSociety.value  = expandedSociety.value === val ? '' : val
+  expandedCategory.value = ''
+  selectedCustomer.value = ''
+}
+const toggleCategory = (val: string) => {
+  expandedCategory.value = expandedCategory.value === val ? '' : val
+  selectedCustomer.value = ''
 }
 
-// Pincode toggle handler
-const togglePincode = (val: string) => {
-  if (expandedPincode.value === val) {
-    expandedPincode.value = ''
-  } else {
-    expandedPincode.value = val
-    options.fetch()
-  }
+const selectCustomer = (customerId: string) => {
+  selectedCustomer.value = customerId
+  emit('update:filters', {
+    pincode:  expandedPincode.value,
+    society:  expandedSociety.value,
+    category: expandedCategory.value,
+    customer: customerId,
+    seller:   data.value?.seller?.name || ''
+  })
+  if (window.innerWidth < 768) emit('close')
+}
+
+const resetSelection = () => {
+  expandedSociety.value  = ''
+  expandedCategory.value = ''
+  selectedCustomer.value = ''
+  emit('update:filters', {
+    pincode:  expandedPincode.value,
+    society:  '',
+    category: '',
+    customer: '',
+    seller:   data.value?.seller?.name || ''
+  })
 }
 </script>
 
 <template>
-  <div v-if="isOpen" class="fixed inset-0 bg-black/50 z-[60] lg:hidden backdrop-blur-sm" @click="emit('close')"></div>
-  
-  <aside :class="[
-    'fixed inset-y-0 left-0 z-[70] w-72 bg-white border-r border-gray-100 flex flex-col transition-transform duration-300 lg:static lg:translate-x-0',
-    isOpen ? 'translate-x-0' : '-translate-x-full'
-  ]">
-    <div class="p-4 border-b border-gray-50 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <Avatar :label="context.data?.company?.company_name || 'S'" size="md" class="bg-gray-900 text-white" />
-        <div class="leading-tight">
-          <p class="text-sm font-black truncate w-40 text-gray-900">{{ context.data?.company?.company_name || 'Seller Admin' }}</p>
-          <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Explorer</p>
+  <!-- Mobile overlay -->
+  <div
+    v-if="isOpen"
+    class="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
+    @click="emit('close')"
+  />
+
+  <div
+    :class="[
+      'flex flex-col bg-white border-r border-gray-100 transition-transform duration-300 z-50',
+      'fixed inset-y-0 left-0 md:sticky md:top-0',
+      /* Mobile: full width when open, otherwise hidden off-screen */
+      'w-[85vw] max-w-[300px] sm:w-72 h-full md:w-64 lg:w-72',
+      isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'
+    ]"
+  >
+    <!-- ─── HEADER ─── -->
+    <div class="p-3 sm:p-4 md:p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+      <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div
+          class="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-sm flex-shrink-0"
+        >
+          {{ data?.seller?.company_name?.[0]?.toUpperCase() || 'S' }}
+        </div>
+        <div class="overflow-hidden min-w-0">
+          <h3 class="font-black text-gray-900 truncate text-xs sm:text-sm">
+            {{ data?.seller?.company_name || 'Seller' }}
+          </h3>
+          <p class="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+            Customer Explorer
+          </p>
         </div>
       </div>
-      <Button variant="ghost" class="lg:hidden" @click="emit('close')"><X class="w-4 h-4" /></Button>
+      <!-- Close btn (always shown on mobile, hidden on md+) -->
+      <button
+        @click="emit('close')"
+        class="md:hidden p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 flex-shrink-0"
+      >
+        <X class="w-4 h-4 sm:w-5 sm:h-5" />
+      </button>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
-      <div v-if="context.loading" class="flex justify-center p-4"><LoadingIndicator /></div>
+    <!-- ─── TREE ─── -->
+    <div class="flex-1 overflow-y-auto p-2 sm:p-3 custom-scrollbar">
 
-      <div v-for="(pin, index) in (context.data?.pincodes || [])" :key="pin.value" class="relative">
-        <button 
-          @click="togglePincode(pin.value)" 
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors text-left group"
-        >
-          <component :is="expandedPincode === pin.value ? ChevronDown : ChevronRight" class="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-          <MapPin class="w-4 h-4 text-blue-500" /> 
-          <span class="truncate">{{ pin.label }}</span>
-        </button>
+      <div v-if="sidebarData.loading" class="flex justify-center py-10">
+        <LoadingIndicator class="w-5 h-5 text-blue-500" />
+      </div>
 
-        <div v-if="expandedPincode === pin.value" class="ml-[19px] pl-3 border-l border-gray-200 space-y-1 mt-1">
-            <div v-if="options.loading" class="py-2 pl-2"><LoadingIndicator class="w-4 h-4" /></div>
-            
-            <div v-else v-for="soc in (options.data?.societies || [])" :key="soc.value" class="relative">
-            <button 
-              @click="expandedSociety = expandedSociety === soc.value ? '' : soc.value" 
-              class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 text-xs text-gray-600 text-left group"
-            >
-              <component :is="expandedSociety === soc.value ? ChevronDown : ChevronRight" class="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500" />
-              <Building class="w-3.5 h-3.5 text-gray-400" /> 
-              <span class="truncate">{{ soc.label }}</span>
-            </button>
+      <div v-else-if="pincodeOptions.length === 0"
+        class="text-center py-10 text-gray-400 text-xs px-4">
+        No pincodes found for this seller.
+      </div>
 
-            <div v-if="expandedSociety === soc.value" class="ml-[17px] pl-3 border-l border-gray-200 space-y-1 mt-1">
-              <div v-for="cat in (categories.data || [])" :key="cat.value">
-                <button 
-                  @click="expandedCategory = expandedCategory === cat.value ? '' : cat.value" 
-                  class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 text-[11px] text-gray-500 text-left group"
-                >
-                  <component :is="expandedCategory === cat.value ? ChevronDown : ChevronRight" class="w-3 h-3 text-gray-300 group-hover:text-gray-500" />
-                  <Layers class="w-3.5 h-3.5 text-gray-400" /> 
-                  <span class="truncate">{{ cat.label }}</span>
-                </button>
+      <!-- PINCODE LEVEL -->
+      <div v-else class="space-y-1">
+        <div v-for="pin in pincodeOptions" :key="pin.value" class="mb-1">
 
-                <div v-if="expandedCategory === cat.value" class="ml-[15px] pl-3 border-l border-gray-200 space-y-1 mt-1 pb-1">
-                  <button 
-                    v-for="cus in (options.data?.customers || [])" 
-                    :key="cus.value" 
-                    @click="selectCustomer(cus.value)"
+          <button
+            @click="togglePincode(pin.value)"
+            :class="[
+              'w-full flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-left',
+              expandedPincode === pin.value
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-50'
+            ]"
+          >
+            <component
+              :is="expandedPincode === pin.value ? ChevronDown : ChevronRight"
+              class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"
+            />
+            <MapPin class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-blue-500" />
+            <span class="truncate">{{ pin.label }}</span>
+          </button>
+
+          <!-- SOCIETY LEVEL -->
+          <div v-if="expandedPincode === pin.value"
+            class="ml-3 sm:ml-4 pl-2 sm:pl-3 border-l-2 border-gray-100 mt-1 space-y-1">
+
+            <p v-if="societyOptions.length === 0"
+              class="text-[10px] text-gray-400 px-2 py-1 italic">
+              No societies in this pincode
+            </p>
+
+            <div v-for="soc in societyOptions" :key="soc.value">
+              <button
+                @click="toggleSociety(soc.value)"
+                :class="[
+                  'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium transition-all text-left',
+                  expandedSociety === soc.value
+                    ? 'bg-gray-100 text-gray-900'
+                    : 'text-gray-500 hover:bg-gray-50'
+                ]"
+              >
+                <component
+                  :is="expandedSociety === soc.value ? ChevronDown : ChevronRight"
+                  class="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0"
+                />
+                <Building class="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0 text-gray-400" />
+                <span class="truncate text-[11px] sm:text-xs">{{ soc.label }}</span>
+              </button>
+
+              <!-- CATEGORY LEVEL -->
+              <div v-if="expandedSociety === soc.value"
+                class="ml-3 sm:ml-4 pl-2 sm:pl-3 border-l-2 border-gray-100 mt-1 space-y-1">
+
+                <p v-if="categoryOptions.length === 0"
+                  class="text-[10px] text-gray-400 px-2 py-1 italic">
+                  No categories found
+                </p>
+
+                <div v-for="cat in categoryOptions" :key="cat.value">
+                  <button
+                    @click="toggleCategory(cat.value)"
                     :class="[
-                      'w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] text-left transition-all', 
-                      selectedCustomer === cus.value 
-                        ? 'bg-blue-50 text-blue-700 font-bold border-l-2 border-blue-500' 
-                        : 'text-gray-500 hover:bg-gray-50 border-l-2 border-transparent'
+                      'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all text-left',
+                      expandedCategory === cat.value
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-gray-400 hover:bg-gray-50'
                     ]"
                   >
-                    <Users class="w-3 h-3" /> 
-                    <span class="truncate">{{ cus.label }}</span>
+                    <component
+                      :is="expandedCategory === cat.value ? ChevronDown : ChevronRight"
+                      class="w-3 h-3 flex-shrink-0"
+                    />
+                    <Layers class="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+                    <span class="truncate">{{ cat.label }}</span>
                   </button>
-                  <div v-if="!options.data?.customers?.length" class="text-[10px] text-gray-300 px-2 italic">No customers</div>
+
+                  <!-- CUSTOMER LEVEL -->
+                  <div v-if="expandedCategory === cat.value"
+                    class="ml-3 sm:ml-4 pl-2 border-l-2 border-gray-100 mt-1 space-y-1 pb-1">
+
+                    <p v-if="customerOptions.length === 0"
+                      class="text-[10px] text-gray-400 px-2 py-1 italic">
+                      No customers in this pincode
+                    </p>
+
+                    <button
+                      v-for="cus in customerOptions"
+                      :key="cus.value"
+                      @click="selectCustomer(cus.value)"
+                      :class="[
+                        'w-full flex items-center gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[11px] transition-all text-left',
+                        selectedCustomer === cus.value
+                          ? 'bg-blue-600 text-white font-bold shadow-sm'
+                          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                      ]"
+                    >
+                      <Users class="w-3 h-3 flex-shrink-0" />
+                      <span class="truncate">{{ cus.label }}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -145,11 +261,32 @@ const togglePincode = (val: string) => {
         </div>
       </div>
     </div>
-  </aside>
+
+    <!-- ─── FOOTER ─── -->
+    <div class="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30">
+      <Button
+        v-if="selectedCustomer"
+        variant="subtle"
+        theme="gray"
+        class="w-full flex justify-center hover:text-red-600 text-xs sm:text-sm"
+        @click="resetSelection"
+      >
+        <template #prefix>
+          <FilterX class="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </template>
+        Clear Selection
+      </Button>
+      <p v-else class="text-center text-[9px] sm:text-[10px] text-gray-400 font-medium">
+        Pincode → Society → Category → Customer
+      </p>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-/* Tree connector styling ke liye helpers */
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #f3f4f6;
+  border-radius: 10px;
+}
 </style>

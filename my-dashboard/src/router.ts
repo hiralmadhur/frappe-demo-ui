@@ -13,7 +13,8 @@ const routes = [
   {
     path: '/seller',
     name: 'Seller',
-    component: () => import('@/pages/Seller/SellerHome.vue'),
+    //component: () => import('@/pages/Seller/SellerHome.vue'),
+    component: () => import('@/pages/Seller/SellerHomeComponent.vue'),
   },
   {
     path: '/customer',

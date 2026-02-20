@@ -3,7 +3,8 @@ import { ref, watch, computed, inject } from 'vue'
 import { createListResource, createResource, Button } from 'frappe-ui'
 import {
   LayoutDashboard, Users, RefreshCcw, XCircle, Receipt,
-  ShoppingCart, Truck, CreditCard, ClipboardList, BookOpen, Plus
+  ShoppingCart, Truck, CreditCard, ClipboardList, BookOpen, Plus,
+  UserCheck
 } from 'lucide-vue-next'
 
 import SellerStatsCards          from '@/components/Seller/SellerStatsCards.vue'
@@ -11,13 +12,11 @@ import SalesOrder                from '@/components/Seller/SalesOrder.vue'
 import SellerOrderDetailDialog   from '@/components/Seller/SellerOrderDetailDialog.vue'
 import SellerCustomersTab        from '@/components/Seller/SellerCustomersTab.vue'
 import SellerCreateInvoiceDialog from '@/components/Seller/SellerCreateInvoiceDialog.vue'
-
-// ── NEW: Delivery Note & Invoice list components ──────────────────────────────
-import Deliverynote from '@/components/Seller/Deliverynote.vue'
-import SalesInvoiceList from '@/components/Seller/SalesInvoiceList.vue'
+import Deliverynote              from '@/components/Seller/Deliverynote.vue'
+import SalesInvoiceList          from '@/components/Seller/SalesInvoiceList.vue'
 
 // ─── PROPS / INJECT ───────────────────────────────────────────────────────────
-const props = defineProps<{ filters: { customer?: string; seller?: string } }>()
+const props = defineProps<{ filters: { customer?: string; seller?: string; category?: string } }>()
 const showToast = inject('showToast') as (msg: string, type?: 'success' | 'error') => void
 
 // ─── MAIN TABS ────────────────────────────────────────────────────────────────
@@ -30,7 +29,9 @@ const mainTabs = [
 
 // ─── SELLING CYCLE TABS ───────────────────────────────────────────────────────
 type CycleTab = 'quotation' | 'salesorder' | 'delivery' | 'invoice' | 'payment' | 'customer_ledger'
-const activeCycleTab = ref<CycleTab>('salesorder')
+
+// null = no tab selected (default state, also after refresh)
+const activeCycleTab = ref<CycleTab | null>(null)
 
 const cycleTabs: { key: CycleTab; label: string; shortLabel: string; icon: any }[] = [
   { key: 'quotation',       label: 'Quotation',       shortLabel: 'Quote',    icon: ClipboardList },
@@ -41,12 +42,18 @@ const cycleTabs: { key: CycleTab; label: string; shortLabel: string; icon: any }
   { key: 'customer_ledger', label: 'Customer Ledger', shortLabel: 'Ledger',   icon: BookOpen      },
 ]
 
-const currentCycleTab = computed(() => cycleTabs.find(t => t.key === activeCycleTab.value))
+const currentCycleTab = computed(() =>
+  activeCycleTab.value ? cycleTabs.find(t => t.key === activeCycleTab.value) : null
+)
+
+// ─── CUSTOMER SELECTED CHECK ──────────────────────────────────────────────────
+// Selling cycle is only visible when a customer is selected from the sidebar
+const isCustomerSelected = computed(() => !!props.filters.customer)
 
 // ─── FILTER STATE ─────────────────────────────────────────────────────────────
-const activeFilter = ref<'all' | 'subscription_pending' | 'daily' | 'normal'>('all')
-const soFromDate   = ref<string>('')
-const soToDate     = ref<string>('')
+const activeFilter  = ref<'all' | 'subscription_pending' | 'daily' | 'normal'>('all')
+const soFromDate    = ref<string>('')
+const soToDate      = ref<string>('')
 const hasDateFilter = computed(() => soFromDate.value !== '' || soToDate.value !== '')
 
 function clearDateFilter() {
@@ -109,9 +116,23 @@ const processSubResource = createResource({
 })
 
 // ─── COMPUTED ─────────────────────────────────────────────────────────────────
-const sellerName    = computed(() => props.filters.seller || '')
-const customerName  = computed(() => props.filters.customer || '')
-const subscriptions = computed(() => (subsResource.data as any)?.subscriptions || [])
+const sellerName   = computed(() => props.filters.seller || '')
+const customerName = computed(() => props.filters.customer || '')
+
+// True when selected category is NewsPaper
+const isNewspaperCategory = computed(() => {
+  const cat = (props.filters.category || '').toLowerCase()
+  return cat.includes('newspaper') || cat.includes('news paper')
+})
+
+// Subscriptions: only when customer selected AND newspaper category
+const subscriptions = computed(() => {
+  if (!customerName.value || !isNewspaperCategory.value) return []
+  const all = (subsResource.data as any)?.subscriptions || []
+  return all.filter((s: any) =>
+    s.customer === customerName.value || s.customer_name === customerName.value
+  )
+})
 
 const dateFilteredOrders = computed<any[]>(() => {
   const all = (orders.data || []) as any[]
@@ -126,7 +147,10 @@ const dateFilteredOrders = computed<any[]>(() => {
 
 const combinedRows = computed<any[]>(() => {
   const rows: any[] = []
-  if (activeFilter.value === 'all' || activeFilter.value === 'subscription_pending') {
+  // Subscriptions and subscription auto-orders only for newspaper category customers
+  const showSubscriptions = isNewspaperCategory.value && !!customerName.value
+
+  if (showSubscriptions && (activeFilter.value === 'all' || activeFilter.value === 'subscription_pending')) {
     for (const sub of subscriptions.value) {
       if (activeFilter.value === 'subscription_pending' && sub.status !== 'Accept Pending') continue
       rows.push({ row_type: 'subscription', ...sub })
@@ -135,6 +159,8 @@ const combinedRows = computed<any[]>(() => {
   if (activeFilter.value !== 'subscription_pending') {
     for (const o of dateFilteredOrders.value) {
       const isSubOrder = !!(o.custom_subscription_refereance)
+      // Sub auto-orders only shown for newspaper category
+      if (isSubOrder && !showSubscriptions) continue
       if (activeFilter.value === 'daily'  && !isSubOrder) continue
       if (activeFilter.value === 'normal' &&  isSubOrder) continue
       rows.push({ row_type: 'order', ...o })
@@ -229,6 +255,8 @@ function toggleSubExpand(id: string) {
 }
 
 function refreshCycleTab() {
+  // Reset to no tab selected on refresh
+  activeCycleTab.value = null
   subsResource.fetch({ seller: sellerName.value })
   orders.reload()
 }
@@ -307,253 +335,281 @@ function createNewSalesOrder() {
       <!-- ── Selling Cycle card ── -->
       <div class="bg-white border-y sm:border border-gray-100 sm:rounded-2xl shadow-sm overflow-hidden w-full min-w-0">
 
-        <!-- Desktop horizontal tab strip -->
-        <div class="hidden sm:block border-b border-gray-100 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div class="flex min-w-max">
-            <button
-              v-for="ctab in cycleTabs"
-              :key="ctab.key"
-              @click="activeCycleTab = ctab.key"
-              :class="[
-                'relative flex items-center gap-2 px-5 md:px-7 py-3.5 text-sm font-bold transition-all whitespace-nowrap',
-                activeCycleTab === ctab.key
-                  ? 'text-gray-900 bg-gray-50/80'
-                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50/40'
-              ]"
-            >
-              <span
-                v-if="activeCycleTab === ctab.key"
-                class="absolute bottom-0 left-0 right-0 h-[2.5px] bg-gray-900 rounded-t-full"
-              />
-              <component :is="ctab.icon" class="w-4 h-4 flex-shrink-0" />
-              {{ ctab.label }}
-            </button>
+        <!-- ══ NO CUSTOMER SELECTED — placeholder ══ -->
+        <div
+          v-if="!isCustomerSelected"
+          class="flex flex-col items-center justify-center py-16 sm:py-24 text-center px-6"
+        >
+          <div class="p-4 bg-gray-100 rounded-2xl mb-4">
+            <UserCheck class="w-10 h-10 text-gray-300" />
           </div>
+          <p class="text-sm font-black text-gray-400">No Customer Selected</p>
+          <p class="text-xs text-gray-300 mt-1.5 max-w-xs leading-relaxed">
+            Select a customer from the sidebar to view their selling cycle — quotations, orders, deliveries, invoices and more.
+          </p>
         </div>
 
-        <!-- Mobile: current tab name header -->
-        <div class="sm:hidden flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-gray-50/60">
-          <component
-            v-if="currentCycleTab"
-            :is="currentCycleTab.icon"
-            class="w-4 h-4 text-gray-700 flex-shrink-0"
-          />
-          <span class="text-sm font-black text-gray-800">{{ currentCycleTab?.label }}</span>
-        </div>
+        <!-- ══ CUSTOMER IS SELECTED — show selling cycle ══ -->
+        <template v-else>
 
-        <!-- ════════ TAB BODIES ════════ -->
-
-        <!-- QUOTATION (coming soon) -->
-        <template v-if="activeCycleTab === 'quotation'">
-          <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
-            <div class="w-full flex justify-end px-3 pb-4">
-              <button @click="refreshCycleTab" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-500 transition-all">
-                <RefreshCcw class="w-3.5 h-3.5" /> Refresh
+          <!-- Desktop horizontal tab strip -->
+          <div class="hidden sm:block border-b border-gray-100 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div class="flex min-w-max">
+              <button
+                v-for="ctab in cycleTabs"
+                :key="ctab.key"
+                @click="activeCycleTab = ctab.key"
+                :class="[
+                  'relative flex items-center gap-2 px-5 md:px-7 py-3.5 text-sm font-bold transition-all whitespace-nowrap',
+                  activeCycleTab === ctab.key
+                    ? 'text-gray-900 bg-gray-50/80'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50/40'
+                ]"
+              >
+                <span
+                  v-if="activeCycleTab === ctab.key"
+                  class="absolute bottom-0 left-0 right-0 h-[2.5px] bg-gray-900 rounded-t-full"
+                />
+                <component :is="ctab.icon" class="w-4 h-4 flex-shrink-0" />
+                {{ ctab.label }}
               </button>
             </div>
-            <div class="p-4 bg-gray-100 rounded-2xl mb-4"><ClipboardList class="w-10 h-10 text-gray-300" /></div>
-            <p class="text-base font-black text-gray-300">Quotation</p>
-            <p class="text-xs text-gray-300 mt-1">Coming soon</p>
           </div>
-        </template>
 
-        <!-- SALES ORDER ──────────────────────────────────────────── -->
-        <template v-else-if="activeCycleTab === 'salesorder'">
+          <!-- Mobile: current tab name header (only when a tab is selected) -->
+          <div
+            v-if="currentCycleTab"
+            class="sm:hidden flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-gray-50/60"
+          >
+            <component :is="currentCycleTab.icon" class="w-4 h-4 text-gray-700 flex-shrink-0" />
+            <span class="text-sm font-black text-gray-800">{{ currentCycleTab.label }}</span>
+          </div>
 
-          <!-- Header bar -->
-          <div class="border-b border-gray-100 bg-gray-50/60">
+          <!-- ════ TAB BODIES ════ -->
 
-            <!-- Row A: Title + Buttons -->
-            <div class="flex flex-wrap items-center gap-2 px-3 sm:px-5 pt-3 pb-2">
+          <!-- No tab selected yet (default state) -->
+          <div
+            v-if="activeCycleTab === null"
+            class="flex flex-col items-center justify-center py-16 sm:py-24 text-center px-6"
+          >
+            <div class="p-4 bg-gray-100 rounded-2xl mb-4">
+              <ShoppingCart class="w-10 h-10 text-gray-300" />
+            </div>
+            <p class="text-sm font-black text-gray-400">Select a Tab</p>
+            <p class="text-xs text-gray-300 mt-1.5">
+              Choose a section above to get started.
+            </p>
+          </div>
 
-              <!-- Left: icon + title -->
-              <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                <div class="p-1.5 sm:p-2 bg-gray-900 rounded-lg sm:rounded-xl text-white shadow flex-shrink-0">
-                  <ShoppingCart class="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <div class="min-w-0">
-                  <h2 class="text-sm sm:text-base font-black tracking-tight leading-tight">Sales Orders</h2>
-                  <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
-                    <span class="text-[10px] sm:text-xs text-gray-400 font-medium">
-                      <span v-if="activeFilter === 'all'">All — Subscriptions &amp; Orders</span>
-                      <span v-else-if="activeFilter === 'subscription_pending'">Subscription Requests</span>
-                      <span v-else-if="activeFilter === 'daily'">Daily Auto-Orders</span>
-                      <span v-else-if="activeFilter === 'normal'">Normal Orders</span>
-                    </span>
-                    <!-- Date filter active indicators -->
-                    <template v-if="hasDateFilter">
-                      <span class="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                        {{ soFromDate || '…' }} → {{ soToDate || '…' }}
+          <!-- QUOTATION (coming soon) -->
+          <template v-else-if="activeCycleTab === 'quotation'">
+            <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
+              <div class="w-full flex justify-end px-3 pb-4">
+                <button @click="refreshCycleTab" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-500 transition-all">
+                  <RefreshCcw class="w-3.5 h-3.5" /> Refresh
+                </button>
+              </div>
+              <div class="p-4 bg-gray-100 rounded-2xl mb-4"><ClipboardList class="w-10 h-10 text-gray-300" /></div>
+              <p class="text-base font-black text-gray-300">Quotation</p>
+              <p class="text-xs text-gray-300 mt-1">Coming soon</p>
+            </div>
+          </template>
+
+          <!-- SALES ORDER ──────────────────────────────────────────── -->
+          <template v-else-if="activeCycleTab === 'salesorder'">
+
+            <!-- Header bar -->
+            <div class="border-b border-gray-100 bg-gray-50/60">
+
+              <!-- Row A: Title + Buttons -->
+              <div class="flex flex-wrap items-center gap-2 px-3 sm:px-5 pt-3 pb-2">
+
+                <!-- Left: icon + title -->
+                <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                  <div class="p-1.5 sm:p-2 bg-gray-900 rounded-lg sm:rounded-xl text-white shadow flex-shrink-0">
+                    <ShoppingCart class="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <div class="min-w-0">
+                    <h2 class="text-sm sm:text-base font-black tracking-tight leading-tight">Sales Orders</h2>
+                    <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                      <span class="text-[10px] sm:text-xs text-gray-400 font-medium">
+                        <span v-if="activeFilter === 'all'">All — Subscriptions &amp; Orders</span>
+                        <span v-else-if="activeFilter === 'subscription_pending'">Subscription Requests</span>
+                        <span v-else-if="activeFilter === 'daily'">Daily Auto-Orders</span>
+                        <span v-else-if="activeFilter === 'normal'">Normal Orders</span>
                       </span>
-                      <span class="text-[9px] text-gray-400 font-semibold">{{ filteredOrderCount }} orders</span>
-                      <button @click="clearDateFilter" class="flex items-center gap-0.5 text-[9px] font-bold text-red-500 hover:text-red-600 whitespace-nowrap">
-                        <XCircle class="w-3 h-3" /> Clear
-                      </button>
-                    </template>
+                      <template v-if="hasDateFilter">
+                        <span class="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                          {{ soFromDate || '…' }} → {{ soToDate || '…' }}
+                        </span>
+                        <span class="text-[9px] text-gray-400 font-semibold">{{ filteredOrderCount }} orders</span>
+                        <button @click="clearDateFilter" class="flex items-center gap-0.5 text-[9px] font-bold text-red-500 hover:text-red-600 whitespace-nowrap">
+                          <XCircle class="w-3 h-3" /> Clear
+                        </button>
+                      </template>
+                    </div>
                   </div>
                 </div>
+
+                <!-- Right: action buttons -->
+                <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+
+                  <button
+                    @click="createNewSalesOrder"
+                    class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
+                  >
+                    <span class="flex items-center justify-center w-5 h-5 bg-white/20 rounded-md flex-shrink-0">
+                      <Plus class="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    </span>
+                    <span class="hidden sm:inline">Create Sales Order</span>
+                    <span class="sm:hidden">New SO</span>
+                  </button>
+
+                  <button
+                    v-if="eligibleForInvoice.length > 0"
+                    @click="showInvoiceDialog = true"
+                    class="flex items-center gap-2 bg-[#3a9e5f] hover:bg-[#2e8a50] active:bg-[#257342] text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
+                  >
+                    <span class="flex items-center justify-center w-5 h-5 bg-white/20 rounded-md flex-shrink-0">
+                      <Receipt class="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    </span>
+                    Create Invoice
+                    <span class="bg-white/25 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                      {{ eligibleForInvoice.length }}
+                    </span>
+                  </button>
+
+                  <button
+                    v-if="activeFilter !== 'all'"
+                    @click="activeFilter = 'all'"
+                    class="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-600 text-xs font-semibold px-2.5 py-2 rounded-lg transition-all whitespace-nowrap"
+                  >
+                    <XCircle class="w-3.5 h-3.5 flex-shrink-0" />
+                    Clear
+                  </button>
+
+                  <button
+                    @click="refreshCycleTab"
+                    :class="[
+                      'flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-xs font-semibold text-gray-600 transition-all',
+                      isCycleLoading ? 'opacity-60 pointer-events-none' : ''
+                    ]"
+                  >
+                    <RefreshCcw :class="['w-3.5 h-3.5 flex-shrink-0', isCycleLoading ? 'animate-spin' : '']" />
+                    <span class="hidden sm:inline">Refresh</span>
+                  </button>
+                </div>
               </div>
 
-              <!-- Right: action buttons -->
-              <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+              <!-- Row B: Date filters -->
+              <div class="flex flex-wrap items-center gap-2 px-3 sm:px-5 pb-3">
 
-                <!-- Create Sales Order -->
+                <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 flex-shrink-0">
+                  <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap select-none">From</span>
+                  <input
+                    type="date"
+                    v-model="soFromDate"
+                    :max="soToDate || undefined"
+                    class="text-[10px] sm:text-xs font-semibold text-gray-700 bg-transparent outline-none border-none w-[108px] sm:w-[122px] cursor-pointer"
+                  />
+                  <button v-if="soFromDate" @click.prevent="soFromDate = ''" class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 ml-0.5">
+                    <XCircle class="w-3 h-3" />
+                  </button>
+                </div>
+
+                <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 flex-shrink-0">
+                  <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap select-none">To</span>
+                  <input
+                    type="date"
+                    v-model="soToDate"
+                    :min="soFromDate || undefined"
+                    class="text-[10px] sm:text-xs font-semibold text-gray-700 bg-transparent outline-none border-none w-[108px] sm:w-[122px] cursor-pointer"
+                  />
+                  <button v-if="soToDate" @click.prevent="soToDate = ''" class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 ml-0.5">
+                    <XCircle class="w-3 h-3" />
+                  </button>
+                </div>
+
                 <button
-                  @click="createNewSalesOrder"
-                  class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
+                  v-if="hasDateFilter"
+                  @click="clearDateFilter"
+                  class="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-all whitespace-nowrap"
                 >
-                  <span class="flex items-center justify-center w-5 h-5 bg-white/20 rounded-md flex-shrink-0">
-                    <Plus class="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </span>
-                  <span class="hidden sm:inline">Create Sales Order</span>
-                  <span class="sm:hidden">New SO</span>
+                  <XCircle class="w-3 h-3" /> Clear Dates
                 </button>
 
-                <!-- Create Invoice (only when eligible) -->
-                <button
-                  v-if="eligibleForInvoice.length > 0"
-                  @click="showInvoiceDialog = true"
-                  class="flex items-center gap-2 bg-[#3a9e5f] hover:bg-[#2e8a50] active:bg-[#257342] text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
-                >
-                  <span class="flex items-center justify-center w-5 h-5 bg-white/20 rounded-md flex-shrink-0">
-                    <Receipt class="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </span>
-                  Create Invoice
-                  <span class="bg-white/25 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
-                    {{ eligibleForInvoice.length }}
-                  </span>
-                </button>
-
-                <!-- Clear type filter -->
-                <button
-                  v-if="activeFilter !== 'all'"
-                  @click="activeFilter = 'all'"
-                  class="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-600 text-xs font-semibold px-2.5 py-2 rounded-lg transition-all whitespace-nowrap"
-                >
-                  <XCircle class="w-3.5 h-3.5 flex-shrink-0" />
-                  Clear
-                </button>
-
-                <!-- Refresh -->
-                <button
-                  @click="refreshCycleTab"
-                  :class="[
-                    'flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-xs font-semibold text-gray-600 transition-all',
-                    isCycleLoading ? 'opacity-60 pointer-events-none' : ''
-                  ]"
-                >
-                  <RefreshCcw :class="['w-3.5 h-3.5 flex-shrink-0', isCycleLoading ? 'animate-spin' : '']" />
-                  <span class="hidden sm:inline">Refresh</span>
-                </button>
+                <span v-if="hasDateFilter" class="text-[10px] text-gray-400 font-semibold">
+                  {{ filteredOrderCount }} orders
+                </span>
               </div>
             </div>
+            <!-- end header bar -->
 
-            <!-- Row B: Date filters -->
-            <div class="flex flex-wrap items-center gap-2 px-3 sm:px-5 pb-3">
+            <SalesOrder
+              :combined-rows="combinedRows"
+              :loading="subsResource.loading || orders.loading"
+              :active-filter="activeFilter"
+              :expanded-sub-id="expandedSubId"
+              :processing-sub-id="processingSubId"
+              :processing-id="processingId"
+              :format-currency="formatCurrency"
+              :get-status-theme="getStatusTheme"
+              @toggle-sub-expand="toggleSubExpand"
+              @sub-action="runSubAction"
+              @open-order-detail="openOrder"
+              @order-action="runOrderAction"
+              @show-all="activeFilter = 'all'"
+            />
+          </template>
 
-              <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 flex-shrink-0">
-                <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap select-none">From</span>
-                <input
-                  type="date"
-                  v-model="soFromDate"
-                  :max="soToDate || undefined"
-                  class="text-[10px] sm:text-xs font-semibold text-gray-700 bg-transparent outline-none border-none w-[108px] sm:w-[122px] cursor-pointer"
-                />
-                <button v-if="soFromDate" @click.prevent="soFromDate = ''" class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 ml-0.5">
-                  <XCircle class="w-3 h-3" />
+          <!-- DELIVERY NOTE ────────────────────────────────────────── -->
+          <template v-else-if="activeCycleTab === 'delivery'">
+            <Deliverynote
+              :customer="customerName"
+              :seller="sellerName"
+              :format-currency="formatCurrency"
+            />
+          </template>
+
+          <!-- SALES INVOICE ───────────────────────────────────────── -->
+          <template v-else-if="activeCycleTab === 'invoice'">
+            <SalesInvoiceList
+              :customer="customerName"
+              :seller="sellerName"
+              :format-currency="formatCurrency"
+            />
+          </template>
+
+          <!-- PAYMENT (coming soon) -->
+          <template v-else-if="activeCycleTab === 'payment'">
+            <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
+              <div class="w-full flex justify-end px-3 pb-4">
+                <button @click="refreshCycleTab" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-500 transition-all">
+                  <RefreshCcw class="w-3.5 h-3.5" /> Refresh
                 </button>
               </div>
+              <div class="p-4 bg-gray-100 rounded-2xl mb-4"><CreditCard class="w-10 h-10 text-gray-300" /></div>
+              <p class="text-base font-black text-gray-300">Payment</p>
+              <p class="text-xs text-gray-300 mt-1">Coming soon</p>
+            </div>
+          </template>
 
-              <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 flex-shrink-0">
-                <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap select-none">To</span>
-                <input
-                  type="date"
-                  v-model="soToDate"
-                  :min="soFromDate || undefined"
-                  class="text-[10px] sm:text-xs font-semibold text-gray-700 bg-transparent outline-none border-none w-[108px] sm:w-[122px] cursor-pointer"
-                />
-                <button v-if="soToDate" @click.prevent="soToDate = ''" class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 ml-0.5">
-                  <XCircle class="w-3 h-3" />
+          <!-- CUSTOMER LEDGER (coming soon) -->
+          <template v-else-if="activeCycleTab === 'customer_ledger'">
+            <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
+              <div class="w-full flex justify-end px-3 pb-4">
+                <button @click="refreshCycleTab" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-500 transition-all">
+                  <RefreshCcw class="w-3.5 h-3.5" /> Refresh
                 </button>
               </div>
-
-              <button
-                v-if="hasDateFilter"
-                @click="clearDateFilter"
-                class="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-all whitespace-nowrap"
-              >
-                <XCircle class="w-3 h-3" /> Clear Dates
-              </button>
-
-              <span v-if="hasDateFilter" class="text-[10px] text-gray-400 font-semibold">
-                {{ filteredOrderCount }} orders
-              </span>
+              <div class="p-4 bg-gray-100 rounded-2xl mb-4"><BookOpen class="w-10 h-10 text-gray-300" /></div>
+              <p class="text-base font-black text-gray-300">Customer Ledger</p>
+              <p class="text-xs text-gray-300 mt-1">Coming soon</p>
             </div>
-          </div>
-          <!-- end header bar -->
+          </template>
 
-          <SalesOrder
-            :combined-rows="combinedRows"
-            :loading="subsResource.loading || orders.loading"
-            :active-filter="activeFilter"
-            :expanded-sub-id="expandedSubId"
-            :processing-sub-id="processingSubId"
-            :processing-id="processingId"
-            :format-currency="formatCurrency"
-            :get-status-theme="getStatusTheme"
-            @toggle-sub-expand="toggleSubExpand"
-            @sub-action="runSubAction"
-            @open-order-detail="openOrder"
-            @order-action="runOrderAction"
-            @show-all="activeFilter = 'all'"
-          />
         </template>
-
-        <!-- DELIVERY NOTE ────────────────────────────────────────── -->
-        <template v-else-if="activeCycleTab === 'delivery'">
-          <Deliverynote
-            :customer="customerName"
-            :seller="sellerName"
-            :format-currency="formatCurrency"
-          />
-        </template>
-
-        <!-- SALES INVOICE ───────────────────────────────────────── -->
-        <template v-else-if="activeCycleTab === 'invoice'">
-          <SalesInvoiceList
-            :customer="customerName"
-            :seller="sellerName"
-            :format-currency="formatCurrency"
-          />
-        </template>
-
-        <!-- PAYMENT (coming soon) -->
-        <template v-else-if="activeCycleTab === 'payment'">
-          <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
-            <div class="w-full flex justify-end px-3 pb-4">
-              <button @click="refreshCycleTab" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-500 transition-all">
-                <RefreshCcw class="w-3.5 h-3.5" /> Refresh
-              </button>
-            </div>
-            <div class="p-4 bg-gray-100 rounded-2xl mb-4"><CreditCard class="w-10 h-10 text-gray-300" /></div>
-            <p class="text-base font-black text-gray-300">Payment</p>
-            <p class="text-xs text-gray-300 mt-1">Coming soon</p>
-          </div>
-        </template>
-
-        <!-- CUSTOMER LEDGER (coming soon) -->
-        <template v-else-if="activeCycleTab === 'customer_ledger'">
-          <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
-            <div class="w-full flex justify-end px-3 pb-4">
-              <button @click="refreshCycleTab" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-500 transition-all">
-                <RefreshCcw class="w-3.5 h-3.5" /> Refresh
-              </button>
-            </div>
-            <div class="p-4 bg-gray-100 rounded-2xl mb-4"><BookOpen class="w-10 h-10 text-gray-300" /></div>
-            <p class="text-base font-black text-gray-300">Customer Ledger</p>
-            <p class="text-xs text-gray-300 mt-1">Coming soon</p>
-          </div>
-        </template>
+        <!-- end customer selected block -->
 
       </div>
       <!-- end selling cycle card -->
@@ -589,10 +645,6 @@ function createNewSalesOrder() {
     />
 
   </div>
-
-  <!-- ══════════════════════════════════════════════════════════════════
-       MOBILE BOTTOM NAV  — fixed, PWA-style, 2 rows
-       ══════════════════════════════════════════════════════════════════ -->
   <nav
     class="sm:hidden fixed bottom-0 left-0 right-0 z-50
            bg-white/96 backdrop-blur-xl
@@ -619,9 +671,9 @@ function createNewSalesOrder() {
       </button>
     </div>
 
-    <!-- Row 2: Selling Cycle tabs (dashboard only, scrollable) -->
+    <!-- Row 2: Selling Cycle tabs — only visible when customer is selected -->
     <div
-      v-if="activeTab === 'dashboard'"
+      v-if="activeTab === 'dashboard' && isCustomerSelected"
       class="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overscroll-x-contain"
     >
       <button
@@ -645,6 +697,15 @@ function createNewSalesOrder() {
         <span class="leading-tight text-center whitespace-nowrap">{{ ctab.shortLabel }}</span>
       </button>
     </div>
+
+    <!-- Row 2 placeholder when no customer selected -->
+    <div
+      v-else-if="activeTab === 'dashboard' && !isCustomerSelected"
+      class="flex items-center justify-center py-2 px-4"
+    >
+      <p class="text-[9px] text-gray-300 font-medium">Select a customer to view selling cycle</p>
+    </div>
+
   </nav>
 
 </template>

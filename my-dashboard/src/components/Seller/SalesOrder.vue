@@ -85,9 +85,6 @@ const DAY_QTY_FIELD: Record<string, string> = {
       <div v-else class="divide-y divide-gray-50">
         <template v-for="row in combinedRows" :key="row.row_type + '-' + row.name">
 
-          <!-- ═══════════════════════════════════════════
-               SUBSCRIPTION ROW
-               ═══════════════════════════════════════════ -->
           <div
             v-if="row.row_type === 'subscription'"
             :class="[
@@ -183,9 +180,6 @@ const DAY_QTY_FIELD: Record<string, string> = {
             </div>
           </div>
 
-          <!-- ═══════════════════════════════════════════
-               ORDER ROW
-               ═══════════════════════════════════════════ -->
           <div
             v-else
             :class="[

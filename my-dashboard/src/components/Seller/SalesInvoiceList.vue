@@ -195,29 +195,29 @@ function showError(msg: string) {
 
 // ─── PRINT FORMAT DETECTION — PERMISSION-SAFE ────────────────────────────────
 //
-// Problem: /api/resource/Print+Format → 403 FORBIDDEN (Seller role ka permission
-//          theek hai lekin Frappe internally block kar raha hai for some reason)
+// Problem: /api/resource/Print+Format → 403 FORBIDDEN (Seller role has permission
+//          but Frappe internally blocks it for some reason)
 //
-// Solution: frappe.client.get_value use karo — yeh whitelisted method hai aur
-//           kisi bhi role ke liye kaam karta hai agar Print Format read access ho.
-//           Agar yeh bhi fail kare, toh hum seedha PDF try karte hain bina format
-//           ke — Frappe server apne aap default format use karta hai.
+// Solution: Use frappe.client.get_value — this is a whitelisted method and
+//           works for any role as long as Print Format read access is granted.
+//           If this also fails, we skip the format parameter entirely —
+//           the Frappe server will use its own default format automatically.
 //
 // Flow:
-//   Step 1 → frappe.client.get_value se Print Format mein default_format=1 dhundo
-//            (POST request hai, GET se alag — CORS issues nahi)
-//   Step 2 → frappe.client.get_value se Property Setter check karo
-//   Step 3 → Format parameter skip karo, Frappe server default use karega
+//   Step 1 → Search Print Format via frappe.client.get_value where default_format=1
+//            (POST request, unlike GET — avoids CORS issues)
+//   Step 2 → Check Property Setter via frappe.client.get_value
+//   Step 3 → Skip format parameter, let Frappe server use its default
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function getDefaultPrintFormat(doctype: string): Promise<string | null> {
 
   // ── Step 1: frappe.client.get_value → POST method, permission-safe ─────────
-  // GET /api/resource → 403, lekin POST /api/method → kaam karta hai
-  // kyunki frappe.client methods whitelisted hain aur role-based nahi
+  // GET /api/resource → 403, but POST /api/method → works
+  // because frappe.client methods are whitelisted and not role-restricted
 
-  // Step 1a: default_format = 1 wala Print Format dhundo
+  // Step 1a: Find Print Format where default_format = 1
   try {
     const res = await fetch('/api/method/frappe.client.get_value', {
       method: 'POST',
@@ -244,7 +244,7 @@ async function getDefaultPrintFormat(doctype: string): Promise<string | null> {
     console.warn('[PrintFormat] Step 1a error:', e)
   }
 
-  // Step 1b: Property Setter se default_print_format check karo
+  // Step 1b: Check Property Setter for default_print_format
   try {
     const res = await fetch('/api/method/frappe.client.get_value', {
       method: 'POST',
@@ -271,7 +271,7 @@ async function getDefaultPrintFormat(doctype: string): Promise<string | null> {
     console.warn('[PrintFormat] Step 1b error:', e)
   }
 
-  // Step 1c: Koi bhi non-Standard custom format dhundo
+  // Step 1c: Find any non-Standard custom format
   try {
     const res = await fetch('/api/method/frappe.client.get_value', {
       method: 'POST',
@@ -290,7 +290,7 @@ async function getDefaultPrintFormat(doctype: string): Promise<string | null> {
       const json = await res.json()
       const fmt = json?.message?.name?.trim()
       if (fmt) {
-        console.log(`[PrintFormat] ✅ Step 1c (first custom via POST) → "${fmt}"`)
+        console.log(`[PrintFormat] ✅ Step 1c (first custom format via POST) → "${fmt}"`)
         return fmt
       }
     }
@@ -298,15 +298,14 @@ async function getDefaultPrintFormat(doctype: string): Promise<string | null> {
     console.warn('[PrintFormat] Step 1c error:', e)
   }
 
-  // Step 2: Sab fail — null return karo, server pe default chhod do
-  console.log('[PrintFormat] ⚠️ Sab steps fail — server default use karega (format=null)')
+  // Step 2: All steps failed — return null, let server use its default
+  console.log('[PrintFormat] ⚠️ All steps failed — server default will be used (format=null)')
   return null
 }
 
-// CSRF token helper — Frappe cookie se nikalta hai
+// CSRF token helper — reads from Frappe cookie
 function getCsrfToken(): string {
   try {
-    // Frappe cookie mein X-Frappe-CSRF-Token hota hai
     const match = document.cookie.match(/csrftoken=([^;]+)/)
     return match ? match[1] : ''
   } catch {
@@ -323,12 +322,12 @@ async function openPrint(docName: string) {
   }
 
   try {
-    // Format dynamically detect karo (permission-safe POST method)
+    // Dynamically detect format (permission-safe POST method)
     const fmt = await getDefaultPrintFormat('Sales Invoice')
 
     printModal.value.printFormat = fmt ?? 'Server Default'
 
-    // PDF blob fetch karo
+    // Fetch PDF blob
     const blob = await fetchPdfBlob(docName, fmt)
 
     printModal.value = {
@@ -341,13 +340,13 @@ async function openPrint(docName: string) {
   } catch (e: any) {
     printModal.value = {
       show: true, loading: false, blobUrl: '',
-      docName, printFormat: '', error: e?.message || 'PDF load fail ho gaya',
+      docName, printFormat: '', error: e?.message || 'Failed to load PDF',
     }
   }
 }
 
-// PDF fetch — agar detected format fail kare toh format parameter skip karo
-// (Frappe server apne aap ERPNext ka default format use karta hai)
+// PDF fetch — if the detected format fails, skip the format parameter
+// (Frappe server will automatically use the ERPNext default format)
 async function fetchPdfBlob(docName: string, fmt: string | null): Promise<Blob> {
 
   // URL builder
@@ -358,39 +357,39 @@ async function fetchPdfBlob(docName: string, fmt: string | null): Promise<Blob> 
       no_letterhead: '0',
       letterhead: 'No Letterhead',
     }
-    // Format sirf tab add karo jab available ho
+    // Only add format when available
     if (format) params.format = format
 
     return '/api/method/frappe.utils.print_format.download_pdf?' +
       new URLSearchParams(params).toString()
   }
 
-  // Primary attempt: detected format se try karo
+  // Primary attempt: try with detected format
   if (fmt) {
     const res = await fetch(makeUrl(fmt), { credentials: 'include' })
     if (res.ok) {
       const blob = await res.blob()
       if (blob.size > 500) {
-        console.log(`[PDF] ✅ Format "${fmt}" se PDF ready`)
+        console.log(`[PDF] ✅ PDF ready using format "${fmt}"`)
         return blob
       }
     }
-    console.warn(`[PDF] Format "${fmt}" fail, format-less retry...`)
+    console.warn(`[PDF] Format "${fmt}" failed, retrying without format…`)
     printModal.value.printFormat = 'Server Default'
   }
 
-  // Fallback: format parameter bilkul nahi bhejna
-  // Frappe server ERPNext ka configured default print format use karega
+  // Fallback: send no format parameter
+  // Frappe server will use ERPNext's configured default print format
   const res2 = await fetch(makeUrl(), { credentials: 'include' })
   if (res2.ok) {
     const blob = await res2.blob()
     if (blob.size > 500) {
-      console.log('[PDF] ✅ Server default format se PDF ready')
+      console.log('[PDF] ✅ PDF ready using server default format')
       return blob
     }
   }
 
-  throw new Error(`PDF generate nahi hua — HTTP ${res2.status}`)
+  throw new Error(`PDF generation failed — HTTP ${res2.status}`)
 }
 
 function closePrint() {
@@ -416,8 +415,8 @@ function askConfirm(opts: {
 function handleSubmit(name: string) {
   if (!detailData.value) return
   askConfirm({
-    title: 'Sales Invoice Submit Karo',
-    message: `${name} submit karein? Accounting entries post ho jaayengi.`,
+    title: 'Submit Sales Invoice',
+    message: `Submit ${name}? Accounting entries will be posted.`,
     confirmLabel: 'Submit',
     confirmClass: 'bg-blue-600 hover:bg-blue-700 text-white',
     onConfirm: () => {
@@ -430,8 +429,8 @@ function handleSubmit(name: string) {
 
 function handleCancel(name: string) {
   askConfirm({
-    title: 'Sales Invoice Cancel Karo',
-    message: `${name} cancel karein? Saari accounting entries reverse ho jaayengi.`,
+    title: 'Cancel Sales Invoice',
+    message: `Cancel ${name}? All accounting entries will be reversed.`,
     confirmLabel: 'Cancel Invoice',
     confirmClass: 'bg-red-600 hover:bg-red-700 text-white',
     onConfirm: () => {
@@ -444,8 +443,8 @@ function handleCancel(name: string) {
 
 function handleDelete(name: string) {
   askConfirm({
-    title: 'Sales Invoice Delete Karo',
-    message: `${name} permanently delete karein? Yeh undo nahi ho sakta.`,
+    title: 'Delete Sales Invoice',
+    message: `Permanently delete ${name}? This cannot be undone.`,
     confirmLabel: 'Delete',
     confirmClass: 'bg-red-700 hover:bg-red-800 text-white',
     onConfirm: () => {
@@ -465,7 +464,7 @@ function handleDelete(name: string) {
          Format detection (403-safe):
            → POST frappe.client.get_value (whitelisted)
            → default_format=1 → Property Setter → standard=No
-           → Fallback: format param skip (server uses default)
+           → Fallback: skip format param (server uses default)
     ═══════════════════════════════════════════════ -->
     <Teleport to="body">
       <Transition
@@ -511,8 +510,8 @@ function handleDelete(name: string) {
                 <div class="absolute inset-0 rounded-2xl border-2 border-emerald-400 border-t-transparent animate-spin" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-bold text-white">PDF Prepare Ho Raha Hai…</p>
-                <p class="text-xs text-gray-500 mt-0.5">Default print format detect ho raha hai</p>
+                <p class="text-sm font-bold text-white">Preparing PDF…</p>
+                <p class="text-xs text-gray-500 mt-0.5">Detecting default print format</p>
               </div>
             </div>
           </div>
@@ -524,11 +523,11 @@ function handleDelete(name: string) {
                 <AlertTriangle class="w-6 h-6 text-red-400" />
               </div>
               <div>
-                <p class="text-sm font-black text-red-300">PDF Load Fail Hua</p>
+                <p class="text-sm font-black text-red-300">Failed to Load PDF</p>
                 <p class="text-xs text-red-500 mt-1 break-words">{{ printModal.error }}</p>
               </div>
               <button @click="closePrint" class="w-full py-2 bg-red-700 hover:bg-red-600 text-white text-xs font-bold rounded-xl transition-colors">
-                Band Karo
+                Close
               </button>
             </div>
           </div>
@@ -559,7 +558,7 @@ function handleDelete(name: string) {
             </div>
             <div class="flex gap-2 justify-end">
               <button @click="confirmDialog.show = false"
-                class="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-600 transition-colors">Wapas Jao</button>
+                class="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-600 transition-colors">Go Back</button>
               <button @click="confirmDialog.onConfirm()"
                 :class="['px-4 py-2 rounded-xl text-xs font-bold transition-colors', confirmDialog.confirmClass]">
                 {{ confirmDialog.confirmLabel }}
@@ -582,7 +581,7 @@ function handleDelete(name: string) {
             <div class="flex items-start gap-3">
               <div class="p-2 bg-red-50 rounded-xl flex-shrink-0"><AlertTriangle class="w-5 h-5 text-red-500" /></div>
               <div class="flex-1 min-w-0">
-                <h3 class="text-sm font-black text-gray-900">Action Fail Hua</h3>
+                <h3 class="text-sm font-black text-gray-900">Action Failed</h3>
                 <p class="text-xs text-red-600 mt-1 leading-relaxed break-words">{{ errorDialog.message }}</p>
               </div>
             </div>
@@ -641,7 +640,7 @@ function handleDelete(name: string) {
 
       <div class="relative">
         <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-        <input v-model="searchQuery" type="text" placeholder="Invoice # ya customer dhundo…"
+        <input v-model="searchQuery" type="text" placeholder="Search invoice # or customer…"
           class="w-full pl-8 pr-8 py-2 text-xs sm:text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-gray-400 transition-colors" />
         <button v-if="searchQuery" @click="searchQuery = ''" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-400">
           <XCircle class="w-3.5 h-3.5" />
@@ -670,7 +669,7 @@ function handleDelete(name: string) {
         </div>
         <button v-if="hasDateFilter || statusFilter !== 'all' || searchQuery" @click="clearFilters"
           class="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-all whitespace-nowrap">
-          <XCircle class="w-3 h-3" /> Sab Clear Karo
+          <XCircle class="w-3 h-3" /> Clear All
         </button>
       </div>
     </div>
@@ -684,8 +683,8 @@ function handleDelete(name: string) {
     <div v-else-if="!isLoading && filtered.length === 0"
       class="flex flex-col items-center justify-center py-20 text-center px-4">
       <div class="p-4 bg-gray-100 rounded-2xl mb-4"><Receipt class="w-10 h-10 text-gray-300" /></div>
-      <p class="text-sm font-black text-gray-300">Koi Invoice Nahi Mila</p>
-      <p class="text-xs text-gray-300 mt-1">Filters change karke dekho</p>
+      <p class="text-sm font-black text-gray-300">No Invoices Found</p>
+      <p class="text-xs text-gray-300 mt-1">Try adjusting your filters</p>
     </div>
 
     <!-- ── Table ── -->

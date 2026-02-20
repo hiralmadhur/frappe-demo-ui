@@ -29,7 +29,10 @@ interface SellerSidebarData {
   all_categories: Option[]
 }
 
-const props = defineProps<{ isOpen?: boolean }>()
+const props = defineProps<{
+  isOpen?: boolean
+  dialogOpen?: boolean    // NEW — when true, sidebar z-index drops below dialog
+}>()
 const emit = defineEmits(['update:filters', 'close'])
 
 const expandedPincode  = ref<string>('')
@@ -101,19 +104,30 @@ const resetSelection = () => {
 </script>
 
 <template>
-  <!-- Mobile overlay -->
+  <!--
+    Mobile overlay backdrop.
+    Hidden when a dialog is open (dialog has its own backdrop at z-[9998])
+    so we don't stack two dark overlays.
+  -->
   <div
-    v-if="isOpen"
+    v-if="isOpen && !dialogOpen"
     class="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
     @click="emit('close')"
   />
 
   <div
     :class="[
-      'flex flex-col bg-white border-r border-gray-100 transition-transform duration-300 z-50',
+      'flex flex-col bg-white border-r border-gray-100 transition-transform duration-300',
       'fixed inset-y-0 left-0 md:sticky md:top-0',
-      /* Mobile: full width when open, otherwise hidden off-screen */
       'w-[85vw] max-w-[300px] sm:w-72 h-full md:w-64 lg:w-72',
+      /*
+        z-index logic:
+        - dialogOpen = true  → drop to z-[39] so dialog (z-9999) sits on top
+        - dialogOpen = false → normal z-50
+        On desktop (md+) sticky positioning means z-index rarely matters,
+        but on mobile fixed sidebar MUST be below dialog backdrop.
+      */
+      dialogOpen ? 'z-[39]' : 'z-50',
       isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'
     ]"
   >
@@ -134,7 +148,6 @@ const resetSelection = () => {
           </p>
         </div>
       </div>
-      <!-- Close btn (always shown on mobile, hidden on md+) -->
       <button
         @click="emit('close')"
         class="md:hidden p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 flex-shrink-0"
@@ -168,10 +181,8 @@ const resetSelection = () => {
                 : 'text-gray-700 hover:bg-gray-50'
             ]"
           >
-            <component
-              :is="expandedPincode === pin.value ? ChevronDown : ChevronRight"
-              class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"
-            />
+            <component :is="expandedPincode === pin.value ? ChevronDown : ChevronRight"
+              class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
             <MapPin class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-blue-500" />
             <span class="truncate">{{ pin.label }}</span>
           </button>
@@ -195,10 +206,8 @@ const resetSelection = () => {
                     : 'text-gray-500 hover:bg-gray-50'
                 ]"
               >
-                <component
-                  :is="expandedSociety === soc.value ? ChevronDown : ChevronRight"
-                  class="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0"
-                />
+                <component :is="expandedSociety === soc.value ? ChevronDown : ChevronRight"
+                  class="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
                 <Building class="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0 text-gray-400" />
                 <span class="truncate text-[11px] sm:text-xs">{{ soc.label }}</span>
               </button>
@@ -222,10 +231,8 @@ const resetSelection = () => {
                         : 'text-gray-400 hover:bg-gray-50'
                     ]"
                   >
-                    <component
-                      :is="expandedCategory === cat.value ? ChevronDown : ChevronRight"
-                      class="w-3 h-3 flex-shrink-0"
-                    />
+                    <component :is="expandedCategory === cat.value ? ChevronDown : ChevronRight"
+                      class="w-3 h-3 flex-shrink-0" />
                     <Layers class="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
                     <span class="truncate">{{ cat.label }}</span>
                   </button>
@@ -266,8 +273,7 @@ const resetSelection = () => {
     <div class="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30">
       <Button
         v-if="selectedCustomer"
-        variant="subtle"
-        theme="gray"
+        variant="subtle" theme="gray"
         class="w-full flex justify-center hover:text-red-600 text-xs sm:text-sm"
         @click="resetSelection"
       >

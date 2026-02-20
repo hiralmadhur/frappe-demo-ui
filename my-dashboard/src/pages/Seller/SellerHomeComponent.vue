@@ -19,6 +19,9 @@ import SalesInvoiceList          from '@/components/Seller/SalesInvoiceList.vue'
 const props = defineProps<{ filters: { customer?: string; seller?: string; category?: string } }>()
 const showToast = inject('showToast') as (msg: string, type?: 'success' | 'error') => void
 
+// ─── EMITS — notify parent when any dialog opens/closes (for sidebar z-index) ─
+const emit = defineEmits<{ (e: 'dialog-open', v: boolean): void }>()
+
 // ─── MAIN TABS ────────────────────────────────────────────────────────────────
 const activeTab = ref<'dashboard' | 'customers'>('dashboard')
 
@@ -66,6 +69,11 @@ const processingId      = ref('')
 const processingSubId   = ref('')
 const expandedSubId     = ref<string | null>(null)
 const detailData        = ref<any>(null)
+
+// Notify parent whenever ANY dialog opens/closes — used by SellerSidebar z-index fix
+watch([showDetail, showInvoiceDialog], ([d, i]) => {
+  emit('dialog-open', d || i)
+})
 
 // ─── RESOURCES ────────────────────────────────────────────────────────────────
 const orders = createListResource({
@@ -179,7 +187,7 @@ const stats = computed(() => {
   }
 })
 
-// ─── FIX: null-safe comparison for Frappe Cloud compatibility ─────────────────
+// null-safe for Frappe Cloud — per_delivered/per_billed can arrive as null/string
 const eligibleForInvoice = computed(() =>
   ((orders.data || []) as any[]).filter(
     o =>
@@ -311,7 +319,6 @@ function createNewSalesOrder() {
     <!-- ══ DASHBOARD TAB ══ -->
     <template v-if="activeTab === 'dashboard'">
 
-      <!-- Stats cards -->
       <div class="px-2 sm:px-0">
         <SellerStatsCards
           :stats="stats"
@@ -340,7 +347,7 @@ function createNewSalesOrder() {
         <!-- CUSTOMER SELECTED -->
         <template v-else>
 
-          <!-- Desktop horizontal tab strip -->
+          <!-- Desktop tab strip -->
           <div class="hidden sm:block border-b border-gray-100 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div class="flex min-w-max">
               <button
@@ -364,7 +371,7 @@ function createNewSalesOrder() {
             </div>
           </div>
 
-          <!-- Mobile: current tab name header -->
+          <!-- Mobile: current tab name -->
           <div
             v-if="currentCycleTab"
             class="sm:hidden flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-gray-50/60"
@@ -373,7 +380,7 @@ function createNewSalesOrder() {
             <span class="text-sm font-black text-gray-800">{{ currentCycleTab.label }}</span>
           </div>
 
-          <!-- No tab selected yet -->
+          <!-- No tab selected -->
           <div
             v-if="activeCycleTab === null"
             class="flex flex-col items-center justify-center py-16 sm:py-24 text-center px-6"
@@ -382,12 +389,10 @@ function createNewSalesOrder() {
               <ShoppingCart class="w-10 h-10 text-gray-300" />
             </div>
             <p class="text-sm font-black text-gray-400">Select a Tab</p>
-            <p class="text-xs text-gray-300 mt-1.5">
-              Choose a section above to get started.
-            </p>
+            <p class="text-xs text-gray-300 mt-1.5">Choose a section above to get started.</p>
           </div>
 
-          <!-- QUOTATION (coming soon) -->
+          <!-- QUOTATION -->
           <template v-else-if="activeCycleTab === 'quotation'">
             <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
               <div class="w-full flex justify-end px-3 pb-4">
@@ -403,14 +408,10 @@ function createNewSalesOrder() {
 
           <!-- ══ SALES ORDER ══ -->
           <template v-else-if="activeCycleTab === 'salesorder'">
-
-            <!-- Header bar -->
             <div class="border-b border-gray-100 bg-gray-50/60">
 
               <!-- Row A: Title + Buttons -->
               <div class="flex flex-wrap items-center gap-2 px-3 sm:px-5 pt-3 pb-2">
-
-                <!-- Left: icon + title -->
                 <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                   <div class="p-1.5 sm:p-2 bg-gray-900 rounded-lg sm:rounded-xl text-white shadow flex-shrink-0">
                     <ShoppingCart class="w-4 h-4 sm:w-5 sm:h-5" />
@@ -424,20 +425,10 @@ function createNewSalesOrder() {
                         <span v-else-if="activeFilter === 'daily'">Daily Auto-Orders</span>
                         <span v-else-if="activeFilter === 'normal'">Normal Orders</span>
                       </span>
-                      <template v-if="hasDateFilter">
-                        <span class="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                          {{ soFromDate || '…' }} → {{ soToDate || '…' }}
-                        </span>
-                        <span class="text-[9px] text-gray-400 font-semibold">{{ filteredOrderCount }} orders</span>
-                        <button @click="clearDateFilter" class="flex items-center gap-0.5 text-[9px] font-bold text-red-500 hover:text-red-600 whitespace-nowrap">
-                          <XCircle class="w-3 h-3" /> Clear
-                        </button>
-                      </template>
                     </div>
                   </div>
                 </div>
 
-                <!-- Right: action buttons -->
                 <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
 
                   <!-- Create Sales Order -->
@@ -453,20 +444,23 @@ function createNewSalesOrder() {
                   </button>
 
                   <!--
-                    ══ CREATE INVOICE BUTTON ══
-                    FIX: v-if hata diya — hamesha visible rahega.
-                    Jab eligible orders 0 hon toh gray+disabled, warna green+clickable.
-                    Frappe Cloud pe per_delivered/per_billed null aane par bhi button dikh-ta rahega.
+                    Create Invoice — ALWAYS visible (not v-if).
+                    Green + clickable when eligible > 0.
+                    Gray + disabled when eligible = 0.
+                    Frappe Cloud pe per_delivered/per_billed null aaye toh bhi button dikh-ta rahega.
                   -->
                   <button
                     @click="eligibleForInvoice.length > 0 ? (showInvoiceDialog = true) : undefined"
+                    :disabled="eligibleForInvoice.length === 0"
                     :class="[
                       'flex items-center gap-1.5 sm:gap-2 font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-all whitespace-nowrap shadow-sm',
                       eligibleForInvoice.length > 0
                         ? 'bg-green-600 hover:bg-green-700 active:bg-green-800 text-white cursor-pointer'
-                        : 'bg-gray-200 hover:bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
                     ]"
-                    :title="eligibleForInvoice.length === 0 ? 'No eligible orders to invoice' : `${eligibleForInvoice.length} orders eligible`"
+                    :title="eligibleForInvoice.length === 0
+                      ? 'No eligible orders to invoice'
+                      : `${eligibleForInvoice.length} orders eligible`"
                   >
                     <span
                       :class="[
@@ -514,13 +508,10 @@ function createNewSalesOrder() {
 
               <!-- Row B: Date filters -->
               <div class="flex flex-wrap items-center gap-2 px-3 sm:px-5 pb-3">
-
                 <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 flex-shrink-0">
                   <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap select-none">From</span>
                   <input
-                    type="date"
-                    v-model="soFromDate"
-                    :max="soToDate || undefined"
+                    type="date" v-model="soFromDate" :max="soToDate || undefined"
                     class="text-[10px] sm:text-xs font-semibold text-gray-700 bg-transparent outline-none border-none w-[108px] sm:w-[122px] cursor-pointer"
                   />
                   <button v-if="soFromDate" @click.prevent="soFromDate = ''" class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 ml-0.5">
@@ -531,9 +522,7 @@ function createNewSalesOrder() {
                 <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 flex-shrink-0">
                   <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap select-none">To</span>
                   <input
-                    type="date"
-                    v-model="soToDate"
-                    :min="soFromDate || undefined"
+                    type="date" v-model="soToDate" :min="soFromDate || undefined"
                     class="text-[10px] sm:text-xs font-semibold text-gray-700 bg-transparent outline-none border-none w-[108px] sm:w-[122px] cursor-pointer"
                   />
                   <button v-if="soToDate" @click.prevent="soToDate = ''" class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 ml-0.5">
@@ -542,8 +531,7 @@ function createNewSalesOrder() {
                 </div>
 
                 <button
-                  v-if="hasDateFilter"
-                  @click="clearDateFilter"
+                  v-if="hasDateFilter" @click="clearDateFilter"
                   class="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-all whitespace-nowrap"
                 >
                   <XCircle class="w-3 h-3" /> Clear Dates
@@ -554,7 +542,6 @@ function createNewSalesOrder() {
                 </span>
               </div>
             </div>
-            <!-- end header bar -->
 
             <SalesOrder
               :combined-rows="combinedRows"
@@ -575,20 +562,12 @@ function createNewSalesOrder() {
 
           <!-- DELIVERY NOTE -->
           <template v-else-if="activeCycleTab === 'delivery'">
-            <Deliverynote
-              :customer="customerName"
-              :seller="sellerName"
-              :format-currency="formatCurrency"
-            />
+            <Deliverynote :customer="customerName" :seller="sellerName" :format-currency="formatCurrency" />
           </template>
 
           <!-- SALES INVOICE -->
           <template v-else-if="activeCycleTab === 'invoice'">
-            <SalesInvoiceList
-              :customer="customerName"
-              :seller="sellerName"
-              :format-currency="formatCurrency"
-            />
+            <SalesInvoiceList :customer="customerName" :seller="sellerName" :format-currency="formatCurrency" />
           </template>
 
           <!-- PAYMENT (coming soon) -->
@@ -620,13 +599,8 @@ function createNewSalesOrder() {
           </template>
 
         </template>
-        <!-- end customer selected block -->
-
       </div>
-      <!-- end selling cycle card -->
-
     </template>
-    <!-- end dashboard -->
 
     <!-- ══ CUSTOMERS TAB ══ -->
     <template v-if="activeTab === 'customers'">
@@ -664,7 +638,6 @@ function createNewSalesOrder() {
            shadow-[0_-4px_32px_rgba(0,0,0,0.10)]"
     style="will-change: transform;"
   >
-    <!-- Row 1: Main tabs -->
     <div class="flex border-b border-gray-100">
       <button
         v-for="mtab in mainTabs"
@@ -682,7 +655,6 @@ function createNewSalesOrder() {
       </button>
     </div>
 
-    <!-- Row 2: Selling Cycle tabs -->
     <div
       v-if="activeTab === 'dashboard' && isCustomerSelected"
       class="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overscroll-x-contain"
@@ -709,14 +681,12 @@ function createNewSalesOrder() {
       </button>
     </div>
 
-    <!-- Row 2 placeholder when no customer selected -->
     <div
       v-else-if="activeTab === 'dashboard' && !isCustomerSelected"
       class="flex items-center justify-center py-2 px-4"
     >
       <p class="text-[9px] text-gray-300 font-medium">Select a customer to view selling cycle</p>
     </div>
-
   </nav>
 
 </template>

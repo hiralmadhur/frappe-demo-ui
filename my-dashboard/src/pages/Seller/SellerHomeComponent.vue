@@ -30,7 +30,6 @@ const mainTabs = [
 // ─── SELLING CYCLE TABS ───────────────────────────────────────────────────────
 type CycleTab = 'quotation' | 'salesorder' | 'delivery' | 'invoice' | 'payment' | 'customer_ledger'
 
-// null = no tab selected (default state, also after refresh)
 const activeCycleTab = ref<CycleTab | null>(null)
 
 const cycleTabs: { key: CycleTab; label: string; shortLabel: string; icon: any }[] = [
@@ -174,15 +173,19 @@ const stats = computed(() => {
   return {
     subPending:   subs.filter(s => s.status === 'Accept Pending').length,
     subActive:    subs.filter(s => s.status === 'Active').length,
-    orderPending: orderData.filter(o => o.docstatus === 0 && !o.custom_subscription_refereance).length,
-    toDeliver:    orderData.filter(o => o.docstatus === 1 && o.per_delivered < 100).length,
-    completed:    orderData.filter(o => o.per_delivered >= 100).length,
+    orderPending: orderData.filter(o => Number(o.docstatus) === 0 && !o.custom_subscription_refereance).length,
+    toDeliver:    orderData.filter(o => Number(o.docstatus) === 1 && Number(o.per_delivered ?? 0) < 100).length,
+    completed:    orderData.filter(o => Number(o.per_delivered ?? 0) >= 100).length,
   }
 })
 
+// ─── FIX: null-safe comparison for Frappe Cloud compatibility ─────────────────
 const eligibleForInvoice = computed(() =>
   ((orders.data || []) as any[]).filter(
-    o => o.docstatus === 1 && o.per_delivered > 0 && o.per_billed < 100
+    o =>
+      Number(o.docstatus) === 1 &&
+      Number(o.per_delivered ?? 0) > 0 &&
+      Number(o.per_billed ?? 100) < 100
   )
 )
 
@@ -266,10 +269,6 @@ function createNewSalesOrder() {
 </script>
 
 <template>
-  <!--
-    ROOT WRAPPER
-    pb on mobile = bottom nav height (~112px) + safe area
-  -->
   <div
     class="w-full min-w-0 max-w-7xl mx-auto font-sans text-gray-900
            px-0 sm:px-4 md:px-6
@@ -279,11 +278,8 @@ function createNewSalesOrder() {
            space-y-3 sm:space-y-4 md:space-y-5"
   >
 
-    <!-- ══════════════════════════════════════════════════════════════
-         TOP BAR — desktop only
-         ══════════════════════════════════════════════════════════════ -->
+    <!-- ══ TOP BAR — desktop only ══ -->
     <div class="hidden sm:flex items-center justify-between gap-2 pt-1 flex-wrap">
-
       <div class="flex gap-1 bg-gray-100 p-1 rounded-xl">
         <button
           v-for="tab in mainTabs"
@@ -312,9 +308,7 @@ function createNewSalesOrder() {
       </Button>
     </div>
 
-    <!-- ══════════════════════════════════════════════════════════════
-         DASHBOARD TAB
-         ══════════════════════════════════════════════════════════════ -->
+    <!-- ══ DASHBOARD TAB ══ -->
     <template v-if="activeTab === 'dashboard'">
 
       <!-- Stats cards -->
@@ -326,10 +320,10 @@ function createNewSalesOrder() {
         />
       </div>
 
-      <!-- ── Selling Cycle card ── -->
+      <!-- Selling Cycle card -->
       <div class="bg-white border-y sm:border border-gray-100 sm:rounded-2xl shadow-sm overflow-hidden w-full min-w-0">
 
-        <!-- ══ NO CUSTOMER SELECTED — placeholder ══ -->
+        <!-- NO CUSTOMER SELECTED -->
         <div
           v-if="!isCustomerSelected"
           class="flex flex-col items-center justify-center py-16 sm:py-24 text-center px-6"
@@ -343,7 +337,7 @@ function createNewSalesOrder() {
           </p>
         </div>
 
-        <!-- ══ CUSTOMER IS SELECTED — show selling cycle ══ -->
+        <!-- CUSTOMER SELECTED -->
         <template v-else>
 
           <!-- Desktop horizontal tab strip -->
@@ -370,7 +364,7 @@ function createNewSalesOrder() {
             </div>
           </div>
 
-          <!-- Mobile: current tab name header (only when a tab is selected) -->
+          <!-- Mobile: current tab name header -->
           <div
             v-if="currentCycleTab"
             class="sm:hidden flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-gray-50/60"
@@ -379,9 +373,7 @@ function createNewSalesOrder() {
             <span class="text-sm font-black text-gray-800">{{ currentCycleTab.label }}</span>
           </div>
 
-          <!-- ════ TAB BODIES ════ -->
-
-          <!-- No tab selected yet (default state) -->
+          <!-- No tab selected yet -->
           <div
             v-if="activeCycleTab === null"
             class="flex flex-col items-center justify-center py-16 sm:py-24 text-center px-6"
@@ -409,7 +401,7 @@ function createNewSalesOrder() {
             </div>
           </template>
 
-          <!-- SALES ORDER ──────────────────────────────────────────── -->
+          <!-- ══ SALES ORDER ══ -->
           <template v-else-if="activeCycleTab === 'salesorder'">
 
             <!-- Header bar -->
@@ -448,7 +440,7 @@ function createNewSalesOrder() {
                 <!-- Right: action buttons -->
                 <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
 
-                  <!-- ✅ Create Sales Order — blue (unchanged, works fine) -->
+                  <!-- Create Sales Order -->
                   <button
                     @click="createNewSalesOrder"
                     class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
@@ -460,17 +452,40 @@ function createNewSalesOrder() {
                     <span class="sm:hidden">New SO</span>
                   </button>
 
-                  <!-- ✅ Create Invoice — green-600/700/800 replaces arbitrary #3a9e5f hex -->
+                  <!--
+                    ══ CREATE INVOICE BUTTON ══
+                    FIX: v-if hata diya — hamesha visible rahega.
+                    Jab eligible orders 0 hon toh gray+disabled, warna green+clickable.
+                    Frappe Cloud pe per_delivered/per_billed null aane par bhi button dikh-ta rahega.
+                  -->
                   <button
-                    v-if="eligibleForInvoice.length > 0"
-                    @click="showInvoiceDialog = true"
-                    class="flex items-center gap-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
+                    @click="eligibleForInvoice.length > 0 ? (showInvoiceDialog = true) : undefined"
+                    :class="[
+                      'flex items-center gap-1.5 sm:gap-2 font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-all whitespace-nowrap shadow-sm',
+                      eligibleForInvoice.length > 0
+                        ? 'bg-green-600 hover:bg-green-700 active:bg-green-800 text-white cursor-pointer'
+                        : 'bg-gray-200 hover:bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                    ]"
+                    :title="eligibleForInvoice.length === 0 ? 'No eligible orders to invoice' : `${eligibleForInvoice.length} orders eligible`"
                   >
-                    <span class="flex items-center justify-center w-5 h-5 bg-white/20 rounded-md flex-shrink-0">
+                    <span
+                      :class="[
+                        'flex items-center justify-center w-5 h-5 rounded-md flex-shrink-0',
+                        eligibleForInvoice.length > 0 ? 'bg-white/20' : 'bg-gray-300/50'
+                      ]"
+                    >
                       <Receipt class="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                     </span>
-                    Create Invoice
-                    <span class="bg-white/25 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                    <span class="hidden sm:inline">Create Invoice</span>
+                    <span class="sm:hidden">Invoice</span>
+                    <span
+                      :class="[
+                        'text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none',
+                        eligibleForInvoice.length > 0
+                          ? 'bg-white/25 text-white'
+                          : 'bg-gray-300 text-gray-500'
+                      ]"
+                    >
                       {{ eligibleForInvoice.length }}
                     </span>
                   </button>
@@ -558,7 +573,7 @@ function createNewSalesOrder() {
             />
           </template>
 
-          <!-- DELIVERY NOTE ────────────────────────────────────────── -->
+          <!-- DELIVERY NOTE -->
           <template v-else-if="activeCycleTab === 'delivery'">
             <Deliverynote
               :customer="customerName"
@@ -567,7 +582,7 @@ function createNewSalesOrder() {
             />
           </template>
 
-          <!-- SALES INVOICE ───────────────────────────────────────── -->
+          <!-- SALES INVOICE -->
           <template v-else-if="activeCycleTab === 'invoice'">
             <SalesInvoiceList
               :customer="customerName"
@@ -613,16 +628,14 @@ function createNewSalesOrder() {
     </template>
     <!-- end dashboard -->
 
-    <!-- ══════════════════════════════════════════════════════════════
-         CUSTOMERS TAB
-         ══════════════════════════════════════════════════════════════ -->
+    <!-- ══ CUSTOMERS TAB ══ -->
     <template v-if="activeTab === 'customers'">
       <div class="px-2 sm:px-0">
         <SellerCustomersTab :seller="sellerName" />
       </div>
     </template>
 
-    <!-- ── DIALOGS ─────────────────────────────────────────────────── -->
+    <!-- ── DIALOGS ── -->
     <SellerOrderDetailDialog
       v-model="showDetail"
       :order-details="detailData"
@@ -642,9 +655,7 @@ function createNewSalesOrder() {
 
   </div>
 
-  <!-- ══════════════════════════════════════════════════════════════
-       MOBILE BOTTOM NAV
-       ══════════════════════════════════════════════════════════════ -->
+  <!-- ══ MOBILE BOTTOM NAV ══ -->
   <nav
     class="sm:hidden fixed bottom-0 left-0 right-0 z-50
            bg-white/96 backdrop-blur-xl
@@ -671,7 +682,7 @@ function createNewSalesOrder() {
       </button>
     </div>
 
-    <!-- Row 2: Selling Cycle tabs — only visible when customer is selected -->
+    <!-- Row 2: Selling Cycle tabs -->
     <div
       v-if="activeTab === 'dashboard' && isCustomerSelected"
       class="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overscroll-x-contain"

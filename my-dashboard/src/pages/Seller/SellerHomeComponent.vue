@@ -47,7 +47,6 @@ const currentCycleTab = computed(() =>
 )
 
 // ─── CUSTOMER SELECTED CHECK ──────────────────────────────────────────────────
-// Selling cycle is only visible when a customer is selected from the sidebar
 const isCustomerSelected = computed(() => !!props.filters.customer)
 
 // ─── FILTER STATE ─────────────────────────────────────────────────────────────
@@ -119,13 +118,11 @@ const processSubResource = createResource({
 const sellerName   = computed(() => props.filters.seller || '')
 const customerName = computed(() => props.filters.customer || '')
 
-// True when selected category is NewsPaper
 const isNewspaperCategory = computed(() => {
   const cat = (props.filters.category || '').toLowerCase()
   return cat.includes('newspaper') || cat.includes('news paper')
 })
 
-// Subscriptions: only when customer selected AND newspaper category
 const subscriptions = computed(() => {
   if (!customerName.value || !isNewspaperCategory.value) return []
   const all = (subsResource.data as any)?.subscriptions || []
@@ -147,7 +144,6 @@ const dateFilteredOrders = computed<any[]>(() => {
 
 const combinedRows = computed<any[]>(() => {
   const rows: any[] = []
-  // Subscriptions and subscription auto-orders only for newspaper category customers
   const showSubscriptions = isNewspaperCategory.value && !!customerName.value
 
   if (showSubscriptions && (activeFilter.value === 'all' || activeFilter.value === 'subscription_pending')) {
@@ -159,7 +155,6 @@ const combinedRows = computed<any[]>(() => {
   if (activeFilter.value !== 'subscription_pending') {
     for (const o of dateFilteredOrders.value) {
       const isSubOrder = !!(o.custom_subscription_refereance)
-      // Sub auto-orders only shown for newspaper category
       if (isSubOrder && !showSubscriptions) continue
       if (activeFilter.value === 'daily'  && !isSubOrder) continue
       if (activeFilter.value === 'normal' &&  isSubOrder) continue
@@ -255,7 +250,6 @@ function toggleSubExpand(id: string) {
 }
 
 function refreshCycleTab() {
-  // Reset to no tab selected on refresh
   activeCycleTab.value = null
   subsResource.fetch({ seller: sellerName.value })
   orders.reload()
@@ -454,6 +448,7 @@ function createNewSalesOrder() {
                 <!-- Right: action buttons -->
                 <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
 
+                  <!-- ✅ Create Sales Order — blue (unchanged, works fine) -->
                   <button
                     @click="createNewSalesOrder"
                     class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
@@ -465,10 +460,11 @@ function createNewSalesOrder() {
                     <span class="sm:hidden">New SO</span>
                   </button>
 
+                  <!-- ✅ Create Invoice — green-600/700/800 replaces arbitrary #3a9e5f hex -->
                   <button
                     v-if="eligibleForInvoice.length > 0"
                     @click="showInvoiceDialog = true"
-                    class="flex items-center gap-2 bg-[#3a9e5f] hover:bg-[#2e8a50] active:bg-[#257342] text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
+                    class="flex items-center gap-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm transition-colors whitespace-nowrap shadow-sm"
                   >
                     <span class="flex items-center justify-center w-5 h-5 bg-white/20 rounded-md flex-shrink-0">
                       <Receipt class="w-3 h-3 sm:w-3.5 sm:h-3.5" />
@@ -645,6 +641,10 @@ function createNewSalesOrder() {
     />
 
   </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       MOBILE BOTTOM NAV
+       ══════════════════════════════════════════════════════════════ -->
   <nav
     class="sm:hidden fixed bottom-0 left-0 right-0 z-50
            bg-white/96 backdrop-blur-xl

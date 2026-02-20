@@ -71,3 +71,13 @@ fixtures = [
         ]
     },
 ]
+# my_frappe_app/my_frappe_app/hooks.py
+
+fixtures = [
+    {
+        "dt": "Print Format",
+        "filters": [
+            ["module", "=", "my_frappe_app"]
+        ]
+    }
+]

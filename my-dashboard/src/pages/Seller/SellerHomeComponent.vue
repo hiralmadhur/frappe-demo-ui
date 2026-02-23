@@ -14,6 +14,7 @@ import SellerCustomersTab        from '@/components/Seller/SellerCustomersTab.vu
 import SellerCreateInvoiceDialog from '@/components/Seller/SellerCreateInvoiceDialog.vue'
 import Deliverynote              from '@/components/Seller/Deliverynote.vue'
 import SalesInvoiceList          from '@/components/Seller/SalesInvoiceList.vue'
+import PaymentEntryList from '@/components/Seller/PaymentEntryList.vue'
 
 // ─── PROPS / INJECT ───────────────────────────────────────────────────────────
 const props = defineProps<{ filters: { customer?: string; seller?: string; category?: string } }>()
@@ -570,18 +571,12 @@ function createNewSalesOrder() {
             <SalesInvoiceList :customer="customerName" :seller="sellerName" :format-currency="formatCurrency" />
           </template>
 
-          <!-- PAYMENT (coming soon) -->
-          <template v-else-if="activeCycleTab === 'payment'">
-            <div class="flex flex-col items-center justify-center py-20 sm:py-28 text-center px-4">
-              <div class="w-full flex justify-end px-3 pb-4">
-                <button @click="refreshCycleTab" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-500 transition-all">
-                  <RefreshCcw class="w-3.5 h-3.5" /> Refresh
-                </button>
-              </div>
-              <div class="p-4 bg-gray-100 rounded-2xl mb-4"><CreditCard class="w-10 h-10 text-gray-300" /></div>
-              <p class="text-base font-black text-gray-300">Payment</p>
-              <p class="text-xs text-gray-300 mt-1">Coming soon</p>
-            </div>
+       <template v-else-if="activeCycleTab === 'payment'">
+            <PaymentEntryList
+              :customer="customerName"
+              :seller="sellerName"
+              :format-currency="formatCurrency"
+            />
           </template>
 
           <!-- CUSTOMER LEDGER (coming soon) -->

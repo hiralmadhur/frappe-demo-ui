@@ -5,9 +5,6 @@ app_description = "my_frappe_app"
 app_email = "uvtechglobal@gmail.com"
 app_license = "mit"
 
-# app_include_js = "/assets/my_frappe_app/frontend/index.js"
-# app_include_css = "/assets/my_frappe_app/frontend/index.css"
-
 # Website route rules
 website_route_rules = [
     {"from_route": "/frontend/<path:app_path>", "to_route": "frontend"},
@@ -17,15 +14,22 @@ website_route_rules = [
 on_session_creation = "my_frappe_app.utils.login_redirect"
 get_website_user_home_page = "my_frappe_app.utils.get_home_page"
 
+# ── Doc Events ────────────────────────────────────────────────────
+# Sales Invoice submit hone pe auto email bhejo
+# on_invoice_submit_hook is defined in payment_utils.py (NOT api.py)
+doc_events = {
+    "Sales Invoice": {
+        "on_submit": "my_frappe_app.payment_utils.on_invoice_submit_hook",
+    },
+}
+
 scheduler_events = {
     "cron": {
-        # Step 1: 11:58 PM IST — expire purani subscriptions
-        # UTC: 18:28
+        # Step 1: 11:58 PM IST — expire old subscriptions (UTC: 18:28)
         "28 18 * * *": [
             "my_frappe_app.api.expire_old_subscriptions",
         ],
-        # Step 2: 12:05 AM IST — naye din ke orders banao
-        # UTC: 18:35
+        # Step 2: 12:05 AM IST — generate daily orders (UTC: 18:35)
         "35 18 * * *": [
             "my_frappe_app.api.generate_daily_orders",
         ],
@@ -38,46 +42,31 @@ role_home_page = {
     "Customer": "/frontend/customer",
 }
 
+# ── Fixtures ──────────────────────────────────────────────────────
 fixtures = [
-    # ── 1. Saare Custom DocTypes jinka module = my_frappe_app ──
+    # 1. Custom DocTypes
     {
         "doctype": "DocType",
-        "filters": [
-            ["module", "=", "my_frappe_app"]
-        ]
+        "filters": [["module", "=", "my_frappe_app"]]
     },
-
-    # ── 2. Company ke saare Custom Fields ──────────────────────
+    # 2. Company Custom Fields
     {
         "doctype": "Custom Field",
-        "filters": [
-            ["dt", "=", "Company"]
-        ]
+        "filters": [["dt", "=", "Company"]]
     },
-
-    # ── 3. Sales Order ke saare Custom Fields ──────────────────
+    # 3. Sales Order Custom Fields
     {
         "doctype": "Custom Field",
-        "filters": [
-            ["dt", "=", "Sales Order"]
-        ]
+        "filters": [["dt", "=", "Sales Order"]]
     },
-
-    # ── 4. Property Setters (Company + Sales Order) ─────────────
+    # 4. Property Setters
     {
         "doctype": "Property Setter",
-        "filters": [
-            ["doc_type", "in", ["Company", "Sales Order"]]
-        ]
+        "filters": [["doc_type", "in", ["Company", "Sales Order"]]]
     },
-]
-# my_frappe_app/my_frappe_app/hooks.py
-
-fixtures = [
+    # 5. Print Formats
     {
-        "dt": "Print Format",
-        "filters": [
-            ["module", "=", "my_frappe_app"]
-        ]
-    }
+        "doctype": "Print Format",
+        "filters": [["module", "=", "my_frappe_app"]]
+    },
 ]

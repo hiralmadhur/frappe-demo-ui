@@ -238,10 +238,17 @@ const DAY_QTY_FIELD: Record<string, string> = {
               </Button>
 
               <!-- Invoice -->
-              <Button v-if="row.per_delivered >= 100 && row.per_billed < 100" variant="subtle" theme="gray" size="sm" :loading="processingId === row.name" @click="emit('order-action', row.name, 'invoice')" class="text-xs">
-                <template #prefix><FileText class="w-3 h-3 sm:w-3.5 sm:h-3.5" /></template>
-                <span class="hidden sm:inline">Invoice</span>
-              </Button>
+            <!-- Invoice — only show when delivered but NOT yet fully billed -->
+<Button 
+  v-if="row.docstatus === 1 && Number(row.per_delivered ?? 0) >= 100 && Number(row.per_billed ?? 100) < 100"
+  variant="subtle" theme="gray" size="sm"
+  :loading="processingId === row.name"
+  @click="emit('order-action', row.name, 'invoice')"
+  class="text-xs"
+>
+  <template #prefix><FileText class="w-3 h-3 sm:w-3.5 sm:h-3.5" /></template>
+  <span class="hidden sm:inline">Invoice</span>
+</Button>
 
               <!-- Auto-delivered badge -->
               <span v-if="row.custom_subscription_refereance && row.docstatus === 1 && row.per_delivered < 100" class="text-[9px] sm:text-[10px] text-blue-500 font-semibold bg-blue-50 border border-blue-100 px-1.5 py-1 rounded-lg whitespace-nowrap">

@@ -18,6 +18,7 @@ ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 
 @frappe.whitelist(allow_guest=True)
 def get_current_user_role():
+    frappe.local.no_cookie_check = True
     user = frappe.session.user
     if user == "Administrator":
         return {"role": "Administrator"}

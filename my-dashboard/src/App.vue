@@ -44,7 +44,11 @@ const applyRole = (role: string) => {
 
 onMounted(async () => {
   try {
-    const res = await fetch('/api/method/my_frappe_app.api.get_current_user_role')
+    const csrfToken = (window as any)?.frappe?.csrf_token || (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || 'fetch'
+    const res = await fetch('/api/method/my_frappe_app.api.get_current_user_role', {
+      headers: { 'X-Frappe-CSRF-Token': csrfToken }
+    })
+    if (!res.ok) { applyRole('Guest'); return }
     const data = await res.json()
     applyRole(data?.message?.role || 'Guest')
   } catch (e) { applyRole('Guest') }

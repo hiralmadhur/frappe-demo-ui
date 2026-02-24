@@ -4,6 +4,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* PWA / Mobile Fixes */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS safe area bottom padding support */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Prevent overscroll on mobile */
+body {
+  overscroll-behavior: none;
+}
+
+/* Bottom nav pe content na jaaye */
+.bottom-nav-spacer {
+  height: 4rem; /* 64px = h-16 */
+}
+
+@media (min-width: 768px) {
+  .bottom-nav-spacer {
+    display: none;
+  }
+}
+
 body {
   -webkit-tap-highlight-color: transparent;
 }

@@ -106,6 +106,7 @@ const CurrentNavbar = computed(() => isCustomerRoute.value ? CustomerNavbar : Se
         <main class="flex-1 overflow-y-auto bg-[#F9FAFB] custom-scrollbar">
           <router-view :filters="currentFilters" />
         </main>
+        
       </div>
     </template>
   </div>

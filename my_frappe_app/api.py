@@ -225,13 +225,13 @@ def get_customer_subscription_status(customer, seller):
         "pending":  pending_map,
         "schedule": schedule_map
     }
+
 @frappe.whitelist()
 def get_seller_items(category=None, seller=None):
     if not category:
         return []
     items = frappe.get_all(
         "Item",
-        
         filters={"disabled": 0, "is_sales_item": 1, "item_group": category},
         fields=["name", "item_code", "item_name", "item_group",
                 "image", "standard_rate", "description", "stock_uom"]
@@ -244,14 +244,12 @@ def get_seller_items(category=None, seller=None):
     for item in items:
         item["is_subscription_item"] = category_is_subscription
 
-        # Today's price for display
         result = find_price_recursive(item.item_code, seller_territory, day, target_date)
         item["price"]           = result["price"]
         item["price_available"] = result["price_available"]
         item["price_reason"]    = result["price_reason"]
         item["formatted_price"] = fmt_money(result["price"], currency="INR") if result["price_available"] else ""
 
-        # Always fetch all 7 day prices for subscription modal
         day_prices = {}
         for d in ALL_DAYS:
             pr = find_price_recursive(item.item_code, seller_territory, d, target_date)
@@ -283,7 +281,6 @@ def create_subscription(
         start_dt = getdate(start_date) if start_date else getdate(today)
         end_dt   = add_months(start_dt, int(months))
 
-        # Ensure a primary item exists
         primary_items = [s for s in schedule_items if s.get("is_primary_item")]
         if not primary_items:
             schedule_items[0]["is_primary_item"] = 1
@@ -291,7 +288,6 @@ def create_subscription(
 
         primary_item_code = primary_items[0].get("item_code")
 
-        # Validate: at least one day has qty > 0 for primary item
         primary = primary_items[0]
         has_any_day = any(
             int(primary.get(DAY_QTY_FIELD[d], 0) or 0) > 0
@@ -300,7 +296,6 @@ def create_subscription(
         if not has_any_day:
             return {"status": "error", "message": "Please select at least one day for delivery."}
 
-        # Duplicate check — block Active OR Accept Pending for the same primary item
         existing = frappe.db.sql("""
             SELECT ns.name, ns.status
             FROM `tabNewspaper Subscription` ns
@@ -320,7 +315,6 @@ def create_subscription(
                 )
             }
 
-        # Build subscription doc
         doc = frappe.new_doc("Newspaper Subscription")
         doc.customer   = customer
         doc.seller     = seller
@@ -365,10 +359,6 @@ def create_subscription(
 
 @frappe.whitelist()
 def get_seller_subscriptions(seller=None, status_filter=None):
-    """
-    Returns subscriptions for seller to accept/reject.
-    Used in seller dashboard alongside orders.
-    """
     try:
         if not seller:
             seller = frappe.db.get_value("Company", {"custom_seller": 1}, "name")
@@ -389,10 +379,8 @@ def get_seller_subscriptions(seller=None, status_filter=None):
         )
 
         for sub in subs:
-            # Fetch customer name
             sub.customer_name = frappe.db.get_value("Customer", sub.customer, "customer_name") or sub.customer
 
-            # Fetch schedule items
             schedule_items = frappe.db.get_all(
                 "Newspaper Subscription Item",
                 filters={"parent": sub.name},
@@ -402,7 +390,6 @@ def get_seller_subscriptions(seller=None, status_filter=None):
             )
             sub.schedule_items = schedule_items
 
-            # Build a human-readable schedule summary
             primary = next((s for s in schedule_items if s.is_primary_item), None)
             sub.primary_item_name = primary.item_name if primary else ""
 
@@ -414,15 +401,28 @@ def get_seller_subscriptions(seller=None, status_filter=None):
         frappe.log_error(frappe.get_traceback(), "Seller Subscriptions Error")
         return {"status": "error", "message": str(e)}
 
+
+# ─── HELPER: Customer ka email nikalo ───────────────────────────────────────
+def _get_customer_email(customer_name):
+    """Customer ka email ya user field se email lo."""
+    return (
+        frappe.db.get_value("Customer", customer_name, "email_id")
+        or frappe.db.get_value("Customer", customer_name, "user")
+        or None
+    )
+
+
 @frappe.whitelist()
 def process_subscription(sub_name, action):
     """
     action: 'accept' or 'reject'
-    - accept: sets status=Active, daily orders start from NEXT day via cron
-    - reject: sets status=Cancelled, notifies customer
+    - accept: sets status=Active
+    - reject: sets status=Cancelled
+    Dono cases me customer ka frontend realtime se auto-refresh hoga.
     """
     try:
         sub = frappe.get_doc("Newspaper Subscription", sub_name)
+        customer_email = _get_customer_email(sub.customer)
 
         if action == "accept":
             if sub.status != "Accept Pending":
@@ -433,6 +433,19 @@ def process_subscription(sub_name, action):
             sub.save()
             frappe.db.commit()
 
+            # ✅ FIX 1: Custom realtime event — frontend ka subscription_update handler trigger hoga
+            if customer_email:
+                frappe.publish_realtime(
+                    event='subscription_update',
+                    message={
+                        'sub_name': sub_name,
+                        'action': 'accepted',
+                        'customer': customer_email
+                    },
+                    user=customer_email
+                )
+
+            # Existing: msgprint + Notification Log (bhi trigger hoga — double refresh safe hai)
             _notify_customer_subscription(
                 customer=sub.customer,
                 sub_name=sub.name,
@@ -453,6 +466,18 @@ def process_subscription(sub_name, action):
             sub.save()
             frappe.db.commit()
 
+            # ✅ FIX 2: Reject pe bhi realtime event
+            if customer_email:
+                frappe.publish_realtime(
+                    event='subscription_update',
+                    message={
+                        'sub_name': sub_name,
+                        'action': 'rejected',
+                        'customer': customer_email
+                    },
+                    user=customer_email
+                )
+
             _notify_customer_subscription(
                 customer=sub.customer,
                 sub_name=sub.name,
@@ -470,13 +495,12 @@ def process_subscription(sub_name, action):
         frappe.log_error(frappe.get_traceback(), "Process Subscription Error")
         return {"status": "error", "message": str(e)}
 
+
 def _run_daily_orders(override_day=None, test_mode=False):
     today    = nowdate()
     day_name = override_day if override_day else get_datetime(today).strftime("%A")
     qty_field = DAY_QTY_FIELD.get(day_name, "monday_qty")
 
-    # TEST MODE: start_date <= today (same day bhi chalega)
-    # PRODUCTION: start_date < today (next day se start)
     if test_mode:
         date_condition = "AND start_date <= %(today)s"
     else:
@@ -496,7 +520,6 @@ def _run_daily_orders(override_day=None, test_mode=False):
 
     for sub in active_subs:
         try:
-            # Duplicate check
             already = frappe.db.get_value("Sales Order", {
                 "custom_subscription_refereance": sub.name,
                 "transaction_date": today,
@@ -506,7 +529,6 @@ def _run_daily_orders(override_day=None, test_mode=False):
                 skipped += 1
                 continue
 
-            # Sirf us din ki qty > 0 wale items lo
             schedule_items = frappe.db.get_all(
                 "Newspaper Subscription Item",
                 filters={"parent": sub.name},
@@ -523,7 +545,6 @@ def _run_daily_orders(override_day=None, test_mode=False):
                 skipped += 1
                 continue
 
-            # Price resolve
             item_prices  = []
             price_failed = False
             for entry in items_to_order:
@@ -548,7 +569,6 @@ def _run_daily_orders(override_day=None, test_mode=False):
             if price_failed:
                 continue
 
-            # Sales Order banao
             so = frappe.new_doc("Sales Order")
             so.customer                       = sub.customer
             so.company                        = sub.seller
@@ -572,7 +592,6 @@ def _run_daily_orders(override_day=None, test_mode=False):
             so.submit()
             created += 1
 
-            # Auto Delivery Note
             try:
                 dn = get_mapped_doc("Sales Order", so.name, {
                     "Sales Order": {
@@ -588,8 +607,6 @@ def _run_daily_orders(override_day=None, test_mode=False):
                     }
                 })
 
-                # Newspaper = non-stock item hai practically
-                # Warehouse stock validation bypass karo
                 for item in dn.items:
                     item.warehouse = None
 
@@ -600,7 +617,6 @@ def _run_daily_orders(override_day=None, test_mode=False):
 
                 dn.insert(ignore_mandatory=True)
 
-                # Submit bhi stock check bypass karke
                 dn.flags.ignore_permissions        = True
                 dn.flags.ignore_stock_validation   = True
                 frappe.flags.ignore_stock_ledger   = True
@@ -795,7 +811,6 @@ def get_customer_orders(customer=None):
             order.formatted_total = fmt_money(order.grand_total, currency="INR")
             order.formatted_date  = format_date(order.transaction_date)
 
-        # Also fetch subscriptions for customer
         subs = frappe.db.sql("""
             SELECT name, status, start_date, end_date, seller, creation
             FROM `tabNewspaper Subscription`
@@ -843,11 +858,25 @@ def cancel_order(order_id):
 def process_order_workflow(order_id, action):
     try:
         doc = frappe.get_doc("Sales Order", order_id)
+        customer_email = _get_customer_email(doc.customer)
 
         if action == "accept":
             if doc.docstatus == 1:
                 return {"status": "error", "message": _("Already accepted.")}
             doc.submit()
+
+            # ✅ FIX 3: Order accept pe customer ko notify karo
+            if customer_email:
+                frappe.publish_realtime(
+                    event='order_update',
+                    message={
+                        'order_id': doc.name,
+                        'action': 'accepted',
+                        'customer': customer_email
+                    },
+                    user=customer_email
+                )
+
             return {
                 "status": "success",
                 "message": _("Order {0} accepted").format(doc.name)
@@ -857,6 +886,19 @@ def process_order_workflow(order_id, action):
             if doc.docstatus != 0:
                 return {"status": "error", "message": _("Cannot reject accepted orders")}
             frappe.delete_doc("Sales Order", order_id, ignore_permissions=True)
+
+            # ✅ FIX 4: Order reject pe bhi notify karo
+            if customer_email:
+                frappe.publish_realtime(
+                    event='order_update',
+                    message={
+                        'order_id': order_id,
+                        'action': 'rejected',
+                        'customer': customer_email
+                    },
+                    user=customer_email
+                )
+
             return {"status": "success", "message": _("Order rejected")}
 
         elif action == "deliver":
@@ -879,6 +921,19 @@ def process_order_workflow(order_id, action):
             })
             dn.insert(ignore_permissions=True)
             dn.submit()
+
+            # ✅ FIX 5: Delivery pe bhi customer notify karo
+            if customer_email:
+                frappe.publish_realtime(
+                    event='order_update',
+                    message={
+                        'order_id': order_id,
+                        'action': 'delivered',
+                        'customer': customer_email
+                    },
+                    user=customer_email
+                )
+
             return {
                 "status": "success",
                 "message": _("Delivery Note {0} created").format(dn.name)
@@ -918,10 +973,7 @@ def process_order_workflow(order_id, action):
 
 def _notify_customer_subscription(customer, sub_name, action):
     try:
-        user_email = (
-            frappe.db.get_value("Customer", customer, "email_id")
-            or frappe.db.get_value("Customer", customer, "user")
-        )
+        user_email = _get_customer_email(customer)
         if not user_email:
             return
 
@@ -976,7 +1028,7 @@ def get_seller_orders(seller=None, status_filter=None):
             "Sales Order",
             filters=filters,
             fields=[
-                "name", "customer", "customer_name", "transaction_date",   # ← customer ID bhi
+                "name", "customer", "customer_name", "transaction_date",
                 "grand_total", "docstatus", "status", "per_delivered", "per_billed",
                 "custom_subscription_refereance", "currency"
             ],
@@ -991,7 +1043,6 @@ def get_seller_orders(seller=None, status_filter=None):
             o.formatted_date     = format_date(o.transaction_date)
             o.is_subscription_order = bool(o.custom_subscription_refereance)
 
-            # ── Items fetch karo (day-wise summary ke liye) ──────────
             o.items = frappe.db.get_all(
                 "Sales Order Item",
                 filters={"parent": o.name},
@@ -1003,6 +1054,7 @@ def get_seller_orders(seller=None, status_filter=None):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Seller Orders Error")
         return {"status": "error", "message": str(e)}
+
 @frappe.whitelist()
 def debug_price_setup(seller=None):
     result = {}
@@ -1028,16 +1080,10 @@ def debug_price_setup(seller=None):
     """, as_dict=True)
     return result
 
-   
+
 @frappe.whitelist()
 def get_seller_sidebar_data():
-    """
-    Seller sidebar ke liye data:
-    pincode → society → category → customers
-    Seller apne pincodes ke customers browse kar sake.
-    """
     try:
-        # Seller company dhundho
         seller = frappe.db.get_value(
             "Company", {"custom_seller": 1},
             ["name", "company_name"], as_dict=True
@@ -1045,7 +1091,6 @@ def get_seller_sidebar_data():
         if not seller:
             return {"status": "error", "message": "No seller company found"}
 
-        # Seller ke pincodes
         pincodes = frappe.db.sql("""
             SELECT DISTINCT a.pincode FROM `tabAddress` a
             JOIN `tabDynamic Link` dl ON a.name = dl.parent
@@ -1063,7 +1108,6 @@ def get_seller_sidebar_data():
                 "all_categories": []
             }
 
-        # Har pincode ke liye societies aur customers
         pincode_map = {}
 
         all_companies = frappe.db.sql("""
@@ -1074,7 +1118,6 @@ def get_seller_sidebar_data():
             WHERE a.pincode IN %s AND c.custom_society = 1
         """, (pincodes,), as_dict=True)
 
-        # Customers per pincode
         all_customers = frappe.db.sql("""
             SELECT DISTINCT a.pincode, c.name, c.customer_name FROM `tabCustomer` c
             JOIN `tabDynamic Link` dl ON dl.link_name = c.name AND dl.link_doctype = 'Customer'
@@ -1095,7 +1138,6 @@ def get_seller_sidebar_data():
                 ]
             }
 
-        # Categories (items wali)
         categories = frappe.db.sql("""
             SELECT DISTINCT ig.name as value, ig.item_group_name as label
             FROM `tabItem Group` ig
@@ -1118,13 +1160,8 @@ def get_seller_sidebar_data():
 
 @frappe.whitelist()
 def get_customers_by_pincode_society(pincode, society=None):
-    """
-    Society select hone pe us society ke customers lo.
-    Society = None hone pe pincode ke saare customers.
-    """
     try:
         if society:
-            # Society wali address se customers dhundho
             customers = frappe.db.sql("""
                 SELECT DISTINCT c.name AS value, c.customer_name AS label
                 FROM `tabCustomer` c
@@ -1145,23 +1182,15 @@ def get_customers_by_pincode_society(pincode, society=None):
         return {"status": "success", "customers": customers}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 @frappe.whitelist()
 def get_seller_customers(seller=None):
-    """
-    Seller ke saare customers with:
-    - Contact info (email, mobile, pincode)
-    - Subscription summary (active, pending count)
-    - Order stats (total orders, total revenue)
-    - Recent orders (last 5)
-    - Subscription schedule details
-    """
     try:
         if not seller:
             seller = frappe.db.get_value("Company", {"custom_seller": 1}, "name")
         if not seller:
             return {"status": "error", "message": "Seller not found"}
 
-        # 1. Seller ke saare customers jo is seller se orders/subs rakhte hain
         customer_names_from_orders = frappe.db.sql_list("""
             SELECT DISTINCT customer FROM `tabSales Order`
             WHERE company = %s AND docstatus != 2
@@ -1181,7 +1210,6 @@ def get_seller_customers(seller=None):
                 "pincodes": []
             }
 
-        # 2. Customer basic info
         customers_info = frappe.db.sql("""
             SELECT c.name, c.customer_name, c.email_id as email,
                    c.mobile_no as mobile
@@ -1190,7 +1218,6 @@ def get_seller_customers(seller=None):
             ORDER BY c.customer_name ASC
         """, (all_customer_names,), as_dict=True)
 
-        # 3. Customer pincodes (primary address se)
         customer_pincodes = frappe.db.sql("""
             SELECT dl.link_name as customer, a.pincode
             FROM `tabAddress` a
@@ -1208,7 +1235,6 @@ def get_seller_customers(seller=None):
 
         all_pincodes = list(set(p.pincode for p in customer_pincodes if p.pincode))
 
-        # 4. Order stats per customer
         order_stats = frappe.db.sql("""
             SELECT customer,
                    COUNT(*) as total_orders,
@@ -1220,7 +1246,6 @@ def get_seller_customers(seller=None):
 
         order_stats_map = {o.customer: o for o in order_stats}
 
-        # 5. Subscription counts per customer
         sub_counts = frappe.db.sql("""
             SELECT customer, status, COUNT(*) as cnt
             FROM `tabNewspaper Subscription`
@@ -1236,7 +1261,6 @@ def get_seller_customers(seller=None):
             elif sc.status == 'Accept Pending':
                 pending_subs_map[sc.customer] = sc.cnt
 
-        # 6. Subscriptions with schedule (for expand view)
         all_subs = frappe.db.sql("""
             SELECT name, customer, status, start_date, end_date
             FROM `tabNewspaper Subscription`
@@ -1259,7 +1283,6 @@ def get_seller_customers(seller=None):
         for sub in all_subs:
             subs_by_customer.setdefault(sub.customer, []).append(sub)
 
-        # 7. Recent orders per customer (last 5)
         recent_orders = frappe.db.sql("""
             SELECT name, customer, transaction_date, grand_total,
                    docstatus, status, custom_subscription_refereance
@@ -1275,7 +1298,6 @@ def get_seller_customers(seller=None):
             if len(recent_orders_by_customer[o.customer]) < 5:
                 recent_orders_by_customer[o.customer].append(o)
 
-        # 8. Build final list
         result = []
         for c in customers_info:
             stats_obj = order_stats_map.get(c.name, {})
@@ -1302,6 +1324,7 @@ def get_seller_customers(seller=None):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Seller Customers Error")
         return {"status": "error", "message": str(e)}
+
 
 import json
 import frappe
@@ -1345,12 +1368,10 @@ def create_invoice_from_sales_orders(sales_orders):
     for so_name in sales_orders:
         so = frappe.get_doc("Sales Order", so_name)
 
-        # ── NEW VALIDATION: Check if this SO is already fully billed ──
         if _is_fully_billed(so):
             fully_billed_orders.append(so_name)
             continue
 
-        # Get delivery notes linked to this SO
         dn_map = _get_delivery_note_map(so_name)
 
         for item in so.items:
@@ -1364,7 +1385,6 @@ def create_invoice_from_sales_orders(sales_orders):
             if qty_to_bill <= 0:
                 continue
 
-            # Find matching delivery note item for this SO item
             dn_name, dn_detail = dn_map.get(item.name, (None, None))
 
             sinv.append("items", {
@@ -1386,7 +1406,6 @@ def create_invoice_from_sales_orders(sales_orders):
                 "dn_detail":              dn_detail,
             })
 
-    # ── If ALL selected orders were already fully billed, throw error ──
     if fully_billed_orders and len(fully_billed_orders) == len(sales_orders):
         if len(fully_billed_orders) == 1:
             frappe.throw(_(
@@ -1399,9 +1418,7 @@ def create_invoice_from_sales_orders(sales_orders):
                 f"{', '.join(fully_billed_orders)}. Please select different orders."
             ))
 
-    # ── Warn about partially skipped orders (some billed, some not) ──
     if fully_billed_orders and len(fully_billed_orders) < len(sales_orders):
-        # Proceed but log which ones were skipped
         frappe.log_error(
             message=f"Already fully billed orders skipped during invoice creation: {fully_billed_orders}",
             title="Invoice Creation: Orders Skipped"
@@ -1430,7 +1447,6 @@ def create_invoice_from_sales_orders(sales_orders):
     sinv.insert()
     frappe.db.commit()
 
-    # Build response message — mention skipped orders if any
     skipped_note = ""
     if fully_billed_orders:
         skipped_note = f" ({len(fully_billed_orders)} already-billed order(s) were skipped: {', '.join(fully_billed_orders)})"
@@ -1445,23 +1461,10 @@ def create_invoice_from_sales_orders(sales_orders):
 
 
 def _is_fully_billed(so_doc) -> bool:
-    """
-    Returns True if the Sales Order has already been fully billed.
-
-    Logic:
-      - ERPNext sets per_billed = 100 when all delivered qty has been invoiced.
-      - We also double-check item-level: if every item with delivered_qty > 0
-        has no remaining qty_to_bill, the order is fully billed.
-    """
-    # Primary check: ERPNext's built-in billing percentage
     if flt(so_doc.per_billed) >= 100:
         return True
-
-    # Secondary check: status field
     if so_doc.billing_status == "Fully Billed":
         return True
-
-    # Detailed item-level check
     has_billable_item = False
     for item in so_doc.items:
         rate = flt(item.rate)
@@ -1475,17 +1478,10 @@ def _is_fully_billed(so_doc) -> bool:
         if qty_to_bill > 0:
             has_billable_item = True
             break
-
-    # If no item has remaining billable qty, it's fully billed
     return not has_billable_item
 
 
 def _get_delivery_note_map(so_name: str) -> dict:
-    """
-    Returns dict: { so_detail_name: (dn_name, dn_detail_name) }
-    Maps each SO item row to its corresponding Delivery Note item row.
-    Uses 'so_detail' column (ERPNext v14+). Falls back gracefully if not found.
-    """
     try:
         rows = frappe.db.sql("""
             SELECT dni.so_detail, dni.parent, dni.name
@@ -1495,7 +1491,6 @@ def _get_delivery_note_map(so_name: str) -> dict:
         """, so_name, as_dict=True)
     except Exception:
         return {}
-
     result = {}
     for r in rows:
         if r.so_detail and r.so_detail not in result:
@@ -1508,7 +1503,6 @@ def _validate_so(so_doc):
         frappe.throw(_(f"Sales Order {so_doc.name} is not submitted. Only submitted orders can be invoiced."))
     if so_doc.status in ("Closed", "Cancelled"):
         frappe.throw(_(f"Sales Order {so_doc.name} is {so_doc.status} — invoice cannot be created."))
-
 
 def _get_income_account(item, company: str) -> str:
     if getattr(item, "income_account", None):

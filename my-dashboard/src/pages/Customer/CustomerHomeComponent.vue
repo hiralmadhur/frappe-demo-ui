@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { createResource, Badge, Button } from 'frappe-ui'
 import {
   ShoppingCart, ShoppingBag, RefreshCcw, Store,
@@ -12,6 +12,7 @@ import CustomerOrdersTab         from '@/components/Customer/CustomerOrdersTab.v
 import CustomerSubscriptionsTab  from '@/components/Customer/CustomerSubscriptionsTab.vue'
 import CustomerSubscriptionModal from '@/components/Customer/CustomerSubscriptionModal.vue'
 import CustomerCheckoutDialog    from '@/components/Customer/CustomerCheckoutDialog.vue'
+import CustomerBottomNav         from '@/components/Customer/CustomerBottomNav.vue'
 
 // ─── PROPS ───
 const props = defineProps<{
@@ -130,6 +131,58 @@ const createSubscriptionResource = createResource({
   }
 })
 
+// ─── REALTIME SETUP ───
+// Jab bhi server se event aaye — dono resources refresh karo
+const refreshAllData = () => {
+  if (props.filters?.customer) {
+    ordersResource.fetch({ customer: props.filters.customer })
+  }
+  if (props.filters?.customer && props.filters?.seller) {
+    activeSubsResource.fetch({
+      customer: props.filters.customer,
+      seller: props.filters.seller
+    })
+  }
+}
+
+// Named handlers — taaki off() correctly kaam kare
+const handleSubscriptionUpdate = (_data: any) => {
+  refreshAllData()
+}
+const handleOrderUpdate = (_data: any) => {
+  refreshAllData()
+}
+// msgprint: _notify_customer_subscription yahi use karta hai
+// Iska format string hota hai, isliye alag handler
+const handleMsgprint = (_data: any) => {
+  refreshAllData()
+}
+
+onMounted(() => {
+  const frappe = (window as any).frappe
+  if (!frappe?.realtime) {
+    console.warn('[Realtime] frappe.realtime not available')
+    return
+  }
+
+  frappe.realtime.on('subscription_update', handleSubscriptionUpdate)
+  frappe.realtime.on('order_update', handleOrderUpdate)
+  frappe.realtime.on('msgprint', handleMsgprint)
+
+  console.log('[Realtime] Customer listeners registered ✓')
+})
+
+onUnmounted(() => {
+  const frappe = (window as any).frappe
+  if (!frappe?.realtime) return
+
+  frappe.realtime.off('subscription_update', handleSubscriptionUpdate)
+  frappe.realtime.off('order_update', handleOrderUpdate)
+  frappe.realtime.off('msgprint', handleMsgprint)
+
+  console.log('[Realtime] Customer listeners removed ✓')
+})
+
 // ─── WATCHERS ───
 watch(
   () => props.filters,
@@ -240,7 +293,7 @@ const handleCancelOrder = (orderId: string) => {
   cancelOrderResource.fetch({ order_id: orderId })
 }
 
-// ─── REFRESH ───
+// ─── REFRESH SHOP ───
 const refreshShop = () => {
   if (props.filters.seller && props.filters.category)
     items.fetch({ seller: props.filters.seller, category: props.filters.category })
@@ -248,7 +301,7 @@ const refreshShop = () => {
 </script>
 
 <template>
-  <div class="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
+  <div class="p-4 md:p-6 space-y-5 max-w-7xl mx-auto pb-20 md:pb-6">
 
     <!-- ─── HEADER ─── -->
     <div class="flex justify-between items-center bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm">
@@ -278,13 +331,14 @@ const refreshShop = () => {
         <Button v-if="totalCartItems > 0 && activeTab === 'shop'"
           variant="solid" theme="blue" @click="checkoutOpen = true">
           <template #prefix><ShoppingBag class="w-4 h-4" /></template>
-          {{ totalCartItems }} · {{ formatCurrency(cartTotal) }}
+          <span class="hidden sm:inline">{{ totalCartItems }} · {{ formatCurrency(cartTotal) }}</span>
+          <span class="sm:hidden">{{ totalCartItems }}</span>
         </Button>
       </div>
     </div>
 
-    <!-- ─── TABS ─── -->
-    <div class="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+    <!-- ─── TABS (Desktop only) ─── -->
+    <div class="hidden md:flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
       <button @click="activeTab = 'shop'" :class="['flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all',
         activeTab === 'shop' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700']">
         <Store class="w-4 h-4" /> Shop
@@ -301,7 +355,7 @@ const refreshShop = () => {
       </button>
     </div>
 
-    <!-- ─── SUCCESS BANNERS ─── -->
+    <!-- ─── ORDER SUCCESS BANNER ─── -->
     <div v-if="orderPlaced" class="bg-green-50 border border-green-200 rounded-2xl p-4 space-y-2">
       <div class="flex items-start justify-between">
         <div class="flex gap-3">
@@ -328,6 +382,7 @@ const refreshShop = () => {
       </div>
     </div>
 
+    <!-- ─── SUBSCRIPTION SUCCESS BANNER ─── -->
     <div v-if="subscriptionSuccess" class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
       <div class="flex items-start justify-between">
         <div class="flex gap-3">
@@ -404,4 +459,12 @@ const refreshShop = () => {
     />
 
   </div>
+
+  <!-- ─── MOBILE BOTTOM NAV ─── -->
+  <CustomerBottomNav
+    :active-tab="activeTab"
+    :order-count="allOrders.length"
+    :sub-count="allSubscriptions.length"
+    @change-tab="activeTab = ($event as any)"
+  />
 </template>
